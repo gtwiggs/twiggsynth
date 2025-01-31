@@ -2,7 +2,9 @@
 
 ## Author
 
-Shensley
+Gtwiggs
+
+_Based on code in DaisyExamples/seed/Osc by Shensley_
 
 ## Description
 

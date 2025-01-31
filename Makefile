@@ -5,7 +5,7 @@ TARGET = twiggsynth
 DAISYEXAMPLES_DIR = ../DaisyExamples
 
 # Sources
-CPP_SOURCES = twiggsynth.cpp
+CPP_SOURCES = Osc.cpp
 
 # Library Locations
 LIBDAISY_DIR = $(DAISYEXAMPLES_DIR)/libDaisy

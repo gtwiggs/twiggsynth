@@ -98691,7 +98691,7 @@ xs:noNamespaceSchemaLocation="CMSIS-SVD_Schema_1_1.xsd">
             </field>
             <field>
               <name>OCPM</name>
-              <description>twiggsynthillator Clock Periods
+              <description>Oscillator Clock Periods
               Minimum</description>
               <bitOffset>8</bitOffset>
               <bitWidth>8</bitWidth>
@@ -98721,7 +98721,7 @@ xs:noNamespaceSchemaLocation="CMSIS-SVD_Schema_1_1.xsd">
           <fields>
             <field>
               <name>OCPC</name>
-              <description>twiggsynthillator Clock Period
+              <description>Oscillator Clock Period
               Counter</description>
               <bitOffset>0</bitOffset>
               <bitWidth>18</bitWidth>

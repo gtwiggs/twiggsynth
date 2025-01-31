@@ -8,10 +8,10 @@ using namespace daisysp;
 
 // Declare a DaisySeed object called hardware
 DaisySeed  hardware;
-twiggsynthillator osc;
+Oscillator osc;
 AdEnv      env;
 
-Switch button1;
+// Switch button1;
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
@@ -20,13 +20,13 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     float osc_out, env_out;
 
     //Nobody likes a bouncy button
-    button1.Debounce();
+    // button1.Debounce();
 
     //If you push the button,...
-    if(button1.RisingEdge())
-    {
+    // if(button1.RisingEdge())
+    // {
         env.Trigger(); //Trigger the envelope!
-    }
+    // }
 
     //Convert floating point knob to midi (0-127)
     //Then convert midi to freq. in Hz
@@ -64,10 +64,10 @@ int main(void)
     //Create an ADC configuration
     AdcChannelConfig adcConfig;
     //Add pin 21 as an analog input in this config. We'll use this to read the knob
-    adcConfig.InitSingle(hardware.GetPin(21));
+    adcConfig.InitSingle(hardware.GetPin(40));
 
     //Initialize the button on pin 28
-    button1.Init(hardware.GetPin(28), samplerate / 48.f);
+    // button1.Init(hardware.GetPin(28), samplerate / 48.f);
 
     //Set the ADC to use our configuration
     hardware.adc.Init(&adcConfig, 1);
