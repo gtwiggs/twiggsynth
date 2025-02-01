@@ -4,8 +4,6 @@
 
 Gtwiggs
 
-_Based on code in DaisyExamples/seed/Osc by Shensley_
-
 ## Description
 
 Simple oscillator for daisy seed. Has button triggered envelope and knob controlled pitch.

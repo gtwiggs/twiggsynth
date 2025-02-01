@@ -1,3 +1,7 @@
 {
-  "daisyExamplesFolder": "${workspaceFolder}/../DaisyExamples"
+  "daisyExamplesFolder": "${workspaceFolder}/../DaisyExamples",
+  "workspaceKeybindings.daisyseed.enabled": true,
+  "files.associations": {
+    "iostream": "cpp"
+  }
 }
