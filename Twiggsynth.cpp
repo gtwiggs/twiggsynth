@@ -24,10 +24,7 @@
 
 #include "daisy_seed.h"
 #include "daisysp.h"
-// #include "Filters/moogladder.h"
 
-// Use the daisy namespace to prevent having to type
-// daisy:: before all libdaisy functions
 using namespace daisy;
 using namespace daisysp;
 

@@ -1,4 +1,4 @@
-# twiggsynth
+# Twiggsynth
 
 ## Author
 

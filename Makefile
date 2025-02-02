@@ -1,5 +1,5 @@
 # Project Name
-TARGET = twiggsynth
+TARGET = Twiggsynth
 
 USE_DAISYSP_LGPL = 1
 
@@ -7,7 +7,7 @@ USE_DAISYSP_LGPL = 1
 DAISYEXAMPLES_DIR = ../DaisyExamples
 
 # Sources
-CPP_SOURCES = Osc.cpp
+CPP_SOURCES = Twiggsynth.cpp
 
 # Library Locations
 LIBDAISY_DIR = $(DAISYEXAMPLES_DIR)/libDaisy
