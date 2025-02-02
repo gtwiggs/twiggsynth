@@ -24,6 +24,7 @@
 
 #include "daisy_seed.h"
 #include "daisysp.h"
+#include "Twiggsynth.h"
 
 using namespace daisy;
 using namespace daisysp;
@@ -51,9 +52,7 @@ constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 static DaisySeed  hardware;
 static Oscillator osc, lfo;
 static MoogLadder flt;
-static Parameter  p_vco_freq;
-static Parameter  p_lfo_freq;
-static Parameter  p_volume;
+static Parameter  p_vco_freq, p_lfo_freq, p_volume;
 
 AnalogControl knob1,
     knob2,
@@ -62,21 +61,6 @@ AnalogControl knob1,
 
 Switch3 tripleToggle1,
     *tripleToggles[TRIPTOGGLE_LAST];
-
-void ProcessAnalogControls();
-void ProcessDigitalControls();
-void InitSynth(float samplerate);
-void InitKnobs();
-void InitSwitches();
-float GetKnobValue(Knob k);
-
-/** Process Analog and Digital Controls */
-inline void ProcessAllControls()
-{
-  ProcessAnalogControls();
-  ProcessDigitalControls();
-}
-
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
@@ -104,7 +88,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     osc_out = osc.Process();
 
     filt_freq = 5000 + (lfo.Process() * 5000);
-    flt.SetFreq(filt_freq);
+    flt.SetFreq(filt_freq); // hi pass filter cutoff
 
     filtered_out = flt.Process(osc_out);
 
@@ -136,9 +120,9 @@ void InitSynth(float samplerate)
 {
   // Init freq Parameter to knob1 using MIDI note numbers
   // min 10, max 127, curve linear
-  p_vco_freq.Init(knob3, 0, 127, Parameter::LINEAR);
-  p_lfo_freq.Init(knob2, 0, 20, Parameter::LINEAR);
   p_volume.Init(knob1, 0, 1, Parameter::LINEAR);
+  p_lfo_freq.Init(knob2, 0, 20, Parameter::LINEAR);
+  p_vco_freq.Init(knob3, 0, 127, Parameter::LINEAR);
 
   osc.Init(samplerate);
   osc.SetWaveform(osc.WAVE_POLYBLEP_SAW);
