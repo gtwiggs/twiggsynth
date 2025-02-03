@@ -50,9 +50,13 @@ constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 
 // Declare a DaisySeed object called hardware
 static DaisySeed  hardware;
-static Oscillator osc, lfo;
+static Oscillator osc, subOsc, lfo;
 static MoogLadder flt;
-static Parameter  p_vco_freq, p_lfo_freq, p_volume;
+static Parameter  p_subOsc_freq, p_lfo_freq, p_volume;
+static MidiUsbHandler midi;
+
+// Most recent note value provided by midi input.
+static float noteOn = 0.0f;
 
 AnalogControl knob1,
     knob2,
@@ -66,31 +70,35 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float vco_freq, lfo_freq, filt_freq, osc_out, filtered_out, volume;
+  float subOsc_freq, lfo_freq, filt_freq, osc_out, subOsc_out, filtered_out, volume;
 
   ProcessAllControls();
 
-  if (tripleToggle1.Read() == Switch3::POS_UP) {
+  // TODO: noteOn = noteOnList.empty ? 0 : noteOnList.front
+  if (tripleToggle1.Read() == Switch3::POS_UP && noteOn > 0.0f) {
     volume = 1 - p_volume.Process();
   } else {
     volume = 0;
   }
 
-  vco_freq = mtof(127 - p_vco_freq.Process());
-  osc.SetFreq(vco_freq);
+  osc.SetFreq(mtof(noteOn));
+
+  subOsc_freq = mtof(noteOn - p_subOsc_freq.Process() + 12);
+  subOsc.SetFreq(subOsc_freq > 0.0f ? subOsc_freq : 0.0f);
 
   lfo_freq = 20 - p_lfo_freq.Process();
   lfo.SetFreq(lfo_freq);
 
-  //Fill the block with samples
+  // Fill output buffer with samples
   for(size_t i = 0; i < size; i += 2)
   {
     osc_out = osc.Process();
+    subOsc_out = subOsc.Process();
 
     filt_freq = 5000 + (lfo.Process() * 5000);
     flt.SetFreq(filt_freq); // hi pass filter cutoff
 
-    filtered_out = flt.Process(osc_out);
+    filtered_out = flt.Process(osc_out + subOsc_out) / 2;
 
     //Set the left and right outputs
     out[i]     = filtered_out * volume;
@@ -108,12 +116,60 @@ int main(void)
   hardware.SetAudioBlockSize(4);
 
   InitSynth(hardware.AudioSampleRate());
+  InitMidi();
+
+  // let everything settle
+	System::Delay(100);
 
   hardware.adc.Start();
 
   hardware.StartAudio(AudioCallback);
 
-  while(1) {}
+  while(1) { ProcessMidi(); }
+}
+
+void ProcessMidi() {
+  /** Listen to MIDI for new changes */
+  midi.Listen();
+
+  /** When there are messages waiting in the queue... */
+  while(midi.HasEvents())
+  {
+    /** Pull the oldest one from the list... */
+    auto msg = midi.PopEvent();
+    switch(msg.type)
+    {
+      case NoteOn:
+      {
+        // TODO: list.push_front note_msg.note
+        auto note_msg = msg.AsNoteOn();
+        if(note_msg.velocity != 0) {
+          noteOn = note_msg.note;
+        }
+      }
+      break;
+      case NoteOff:
+      {
+        // TODO: noteOnList.remove_if == note_msg.note
+        noteOn = 0;
+      }
+      break;
+        // Ignore all other message types
+      default: break;
+    }
+  }
+}
+
+/** Initialize USB Midi 
+ *  by default this is set to use the built in (USB FS) peripheral.
+ * 
+ *  by setting midi_cfg.transport_config.periph = MidiUsbTransport::Config::EXTERNAL
+ *  the USB HS pins can be used (as FS) for MIDI 
+ */
+void InitMidi() {
+  MidiUsbHandler::Config midi_cfg;
+  midi_cfg.transport_config.periph = MidiUsbTransport::Config::INTERNAL;
+  midi.Init(midi_cfg);
 }
 
 void InitSynth(float samplerate)
@@ -122,15 +178,20 @@ void InitSynth(float samplerate)
   // min 10, max 127, curve linear
   p_volume.Init(knob1, 0, 1, Parameter::LINEAR);
   p_lfo_freq.Init(knob2, 0, 20, Parameter::LINEAR);
-  p_vco_freq.Init(knob3, 0, 127, Parameter::LINEAR);
+  p_subOsc_freq.Init(knob3, 0, 24, Parameter::LINEAR);
 
   osc.Init(samplerate);
   osc.SetWaveform(osc.WAVE_POLYBLEP_SAW);
   osc.SetAmp(1.f);
-  osc.SetFreq(1000);
+  osc.SetFreq(0);
+
+  subOsc.Init(samplerate);
+  subOsc.SetWaveform(subOsc.WAVE_POLYBLEP_SAW);
+  subOsc.SetAmp(1.f); // maybe lower the subosc vol? Or add a mixer?
+  subOsc.SetFreq(0);
 
   lfo.Init(samplerate);
-  lfo.SetWaveform(osc.WAVE_POLYBLEP_TRI);
+  lfo.SetWaveform(lfo.WAVE_POLYBLEP_TRI);
   lfo.SetFreq(0.1);
 
   flt.Init(samplerate);
