@@ -22,9 +22,14 @@
 // VIN           47  |       |   02    D1
 // DGND          48  |       |   01    D0
 
+#ifndef USE_DAISYSP_LGPL
+#define USE_DAISYSP_LGPL
+#endif
+
 #include "daisy_seed.h"
 #include "daisysp.h"
 #include "Twiggsynth.h"
+#include <list>
 
 using namespace daisy;
 using namespace daisysp;
@@ -55,8 +60,9 @@ static MoogLadder flt;
 static Parameter  p_subOsc_freq, p_lfo_freq, p_volume;
 static MidiUsbHandler midi;
 
-// Most recent note value provided by midi input.
-static float noteOn = 0.0f;
+// "Except for the more recent dual core MCUs, most STM32 are limited to running only one thing at a time"
+// so, no guards against modify-during-read. Good thing as _mutex_ aren't available to the compiler!
+static std::list<float> noteOnList;
 
 AnalogControl knob1,
     knob2,
@@ -66,6 +72,8 @@ AnalogControl knob1,
 Switch3 tripleToggle1,
     *tripleToggles[TRIPTOGGLE_LAST];
 
+// TODO: Make this method more efficient. 
+// I think I can shortcircuit a bunch of processing.
 void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
@@ -74,8 +82,16 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
   ProcessAllControls();
 
-  // TODO: noteOn = noteOnList.empty ? 0 : noteOnList.front
-  if (tripleToggle1.Read() == Switch3::POS_UP && noteOn > 0.0f) {
+  float noteOn = noteOnList.empty()
+    ? 0.0f
+    : noteOnList.front();
+
+  auto modeToggle = tripleToggle1.Read();
+
+  // IDEA: slew/glide between notes.
+  // IDEA: more (sub)harmonic oscs!
+
+  if (noteOn > 0.0f) {
     volume = 1 - p_volume.Process();
   } else {
     volume = 0;
@@ -83,7 +99,11 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
   osc.SetFreq(mtof(noteOn));
 
-  subOsc_freq = mtof(noteOn - p_subOsc_freq.Process() + 12);
+  subOsc_freq = mtof(noteOn - p_subOsc_freq.Process());
+
+  subOsc.SetWaveform(modeToggle == Switch3::POS_UP
+    ? subOsc.WAVE_POLYBLEP_SAW
+    : subOsc.WAVE_SIN);
   subOsc.SetFreq(subOsc_freq > 0.0f ? subOsc_freq : 0.0f);
 
   lfo_freq = 20 - p_lfo_freq.Process();
@@ -98,7 +118,12 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     filt_freq = 5000 + (lfo.Process() * 5000);
     flt.SetFreq(filt_freq); // hi pass filter cutoff
 
-    filtered_out = flt.Process(osc_out + subOsc_out) / 2;
+    if (modeToggle == Switch3::POS_DOWN) {
+      filtered_out = flt.Process(osc_out);
+    } else {
+      filtered_out = flt.Process(osc_out + subOsc_out) / 2;
+      volume *= 1.25;
+    }
 
     //Set the left and right outputs
     out[i]     = filtered_out * volume;
@@ -108,6 +133,8 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
 int main(void)
 {
+  noteOnList = std::list<float>();
+  
   hardware.Init();
 
   InitKnobs();
@@ -141,17 +168,16 @@ void ProcessMidi() {
     {
       case NoteOn:
       {
-        // TODO: list.push_front note_msg.note
         auto note_msg = msg.AsNoteOn();
         if(note_msg.velocity != 0) {
-          noteOn = note_msg.note;
+          noteOnList.push_front(note_msg.note);
         }
       }
       break;
       case NoteOff:
       {
-        // TODO: noteOnList.remove_if == note_msg.note
-        noteOn = 0;
+        auto note_msg = msg.AsNoteOff();
+        noteOnList.remove(note_msg.note);
       }
       break;
         // Ignore all other message types
@@ -177,7 +203,7 @@ void InitSynth(float samplerate)
   // Init freq Parameter to knob1 using MIDI note numbers
   // min 10, max 127, curve linear
   p_volume.Init(knob1, 0, 1, Parameter::LINEAR);
-  p_lfo_freq.Init(knob2, 0, 20, Parameter::LINEAR);
+  p_lfo_freq.Init(knob2, 0, 20, Parameter::EXPONENTIAL);
   p_subOsc_freq.Init(knob3, 0, 24, Parameter::LINEAR);
 
   osc.Init(samplerate);

@@ -6,15 +6,31 @@ Gtwiggs
 
 ## Description
 
-Simple oscillator for daisy seed. Has button triggered envelope and knob controlled pitch.
+A digital synthesis musical instrument.
 
-[Source Code](https://github.com/electro-smith/DaisyExamples/tree/master/seed/twiggsynth)
+_Twigg**synth**_ is a learning platform for _so many things_. Some loose goals:
 
-## Breadboard
+- Organizing code to make the addition/removal and declaration of on-board components easy.
+- Software-based routing between instrument components based on panel input.
+- Self-playing, maybe with seed note(s).
+- Monophonic, perhaps paraphonic.
 
-<img src="https://raw.githubusercontent.com/electro-smith/DaisyExamples/master/seed/twiggsynth/resources/twiggsynth_bb.png" alt="twiggsynth_bb.png" style="width: 100%;"/>
+## State Of Play
 
-## Schematic  
+**_2/3/2024_**
 
-<img src="https://raw.githubusercontent.com/electro-smith/DaisyExamples/master/seed/twiggsynth/resources/twiggsynth_schem.png" alt="twiggsynth_schem.png" style="width: 100%;"/>
-
+- Monophonic dual oscillator synthesis.
+  - New notes supercede prior notes.
+  - If a note is held, it will resume playing after later notes are released.
+- Note input via USB MIDI on the builtin connector.
+  - Listens on all channels.
+- Leftmost Knob controls the sub-oscillator pitch.
+  - This oscillator contributes at a pitch from 0 to two octaves below the MIDI note.
+- Center knob controls LFO Rate
+- LFO modulates the Moog Ladder filter cutoff.
+- Rightmost knob controls volume.
+- 3-position toggle switch chooses the subosc contribution:
+  - UP: subosc is a Sawtooth waveform.
+  - CENTER: subosc is a Sine waveform.
+  - DOWN: subosc is disabled.
+- Mini jack is L/Mono line level out.
