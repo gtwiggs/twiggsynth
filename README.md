@@ -27,7 +27,8 @@ _Twigg**synth**_ is a learning platform for _so many things_. Some loose goals:
 - Leftmost Knob controls the sub-oscillator pitch.
   - This oscillator contributes at a pitch from 0 to two octaves below the MIDI note.
 - Center knob controls LFO Rate
-- LFO modulates the Moog Ladder filter cutoff.
+  - LFO modulates the Moog Ladder filter cutoff.
+  - Filter resonance is fixed (at 0.7)
 - Rightmost knob controls volume.
 - 3-position toggle switch chooses the subosc contribution:
   - UP: subosc is a Sawtooth waveform.
