@@ -172,6 +172,8 @@ int main(void)
   noteOnList = std::list<float>();
   
   hardware.Init();
+  hardware.StartLog();
+  hardware.PrintLine("Initializing ...");
 
   InitAnalogControls();
   InitSwitches();
@@ -207,6 +209,7 @@ void ProcessMidi() {
         auto note_msg = msg.AsNoteOn();
         if(note_msg.velocity != 0) {
           noteOnList.push_front(note_msg.note);
+          hardware.PrintLine("NoteOn: " FLT_FMT3, FLT_VAR3(note_msg.note));
         }
       }
       break;
@@ -214,6 +217,7 @@ void ProcessMidi() {
       {
         auto note_msg = msg.AsNoteOff();
         noteOnList.remove(note_msg.note);
+        hardware.PrintLine("NoteOff: " FLT_FMT3, FLT_VAR3(note_msg.note));
       }
       break;
         // Ignore all other message types
