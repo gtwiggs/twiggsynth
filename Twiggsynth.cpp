@@ -81,13 +81,15 @@ Switch3 tripleToggle1,
 constexpr Pin TRIPTOGGLE_1_UP_PIN = seed::D14;
 constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 
-/**
+/****************************************************************************************************
  * Declare a DaisySeed object called hardware
  */
 static DaisySeed  hardware;
 static Oscillator osc, subOsc, lfo;
 static MoogLadder flt;
 static MidiUsbHandler midi;
+static Port       slew;
+
 
 /**
  * @brief List of currently pressed notes
@@ -96,13 +98,14 @@ static MidiUsbHandler midi;
  * No guards against modify-during-read. Good thing as _mutex_ isn't available to the compiler!
  */
 static std::list<float> noteOnList;
+static float DEFAULT_SLEW_TIME = 0.05f;
 
 // TODO: slew/glide between notes.
 void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float subOsc_freq, lfo_freq, filt_freq, osc_out, subOsc_out, filtered_out, volume;
+  float subOsc_freq, lfo_freq, filt_freq, osc_out, subOsc_out, filtered_out, volume, slewed_freq;
 
   ProcessAllControls();
 
@@ -114,13 +117,20 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
   if (noteOn > 0.0f) {
     volume = params[VOLUME]->Process();
+    slewed_freq = slew.Process(mtof(noteOn));
+    slew.SetHtime(DEFAULT_SLEW_TIME);
   } else {
     volume = 0;
+    // Let slew timeout if there is no note.
+    slewed_freq = mtof(noteOn);
+    slew.SetHtime(0);
   }
 
-  osc.SetFreq(mtof(noteOn));
+  osc.SetFreq(slewed_freq);
 
-  subOsc_freq = mtof(noteOn - params[SUBOSC_FREQ_DETUNE]->Process());
+  // mtof === powf(2, (m - 69.0f) / 12.0f) * 440.0f;
+  float slew_midi = (std::log((slewed_freq / 440.0f))/std::log(2)*12)+69.0f;
+  subOsc_freq = mtof(slew_midi - params[SUBOSC_FREQ_DETUNE]->Process());
 
   subOsc.SetWaveform(modeToggle == Switch3::POS_UP
     ? subOsc.WAVE_POLYBLEP_SAW
@@ -242,6 +252,8 @@ void InitSynth(float samplerate)
 
   flt.Init(samplerate);
   flt.SetRes(0.7);
+
+  slew.Init(samplerate, DEFAULT_SLEW_TIME);
 }
 
 void InitAnalogControls() {

@@ -17,15 +17,16 @@ _Twigg**synth**_ is a learning platform for _so many things_. Some loose goals:
 
 ## State Of Play
 
-**_2/3/2024_**
+**_2/5/2024_**
 
 - Monophonic dual oscillator synthesis.
-  - New notes supercede prior notes.
+  - New notes replace prior notes.
   - If a note is held, it will resume playing after later notes are released.
+  - Portamento for held notes. Resets when no notes are active. Fixed at 0.05s.
 - Note input via USB MIDI on the builtin connector.
   - Listens on all channels.
-- Leftmost Knob controls the sub-oscillator pitch.
-  - This oscillator contributes at a pitch from 0 to two octaves below the MIDI note.
+- Leftmost Knob controls the sub-oscillator detune.
+  - It ranges from no detune (fully clockwise) to -2 octaves (fully counterclockwise).
 - Center knob controls LFO Rate
   - LFO modulates the Moog Ladder filter cutoff.
   - Filter resonance is fixed (at 0.7)
