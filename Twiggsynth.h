@@ -1,6 +1,6 @@
 void InitMidi();
 void InitSynth(float samplerate);
-void InitKnobs();
+void InitAnalogControls();
 void InitSwitches();
 
 void ProcessAnalogControls();

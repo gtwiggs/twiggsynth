@@ -30,50 +30,74 @@
 #include "daisysp.h"
 #include "Twiggsynth.h"
 #include <list>
+#include <vector>
 
 using namespace daisy;
 using namespace daisysp;
 
-enum Knob {
-  KNOB_1,
-  KNOB_2,
-  KNOB_3,
-  KNOB_LAST
+/**
+ * @brief Analog control definitions
+ */
+enum AnalogControlName {
+    VOLUME,
+    LFO_FREQ,
+    SUBOSC_FREQ_DETUNE,
+    LAST_CONTROL
 };
 
+struct AnalogControlDefn {
+    AnalogControlName name;
+    Pin pin;
+    float min;
+    float max;
+    Parameter::Curve curve;
+    bool flipped;
+
+    // Constructor
+    AnalogControlDefn(AnalogControlName name, Pin pin, float min, float max, Parameter::Curve curve, bool flipped = false)
+        : name(name), pin(pin), min(min), max(max), curve(curve), flipped(flipped) {}
+};
+
+std::vector<AnalogControlDefn> analogControlDefns = {
+    { VOLUME, seed::D15, 0, 1, Parameter::LINEAR, true },
+    { LFO_FREQ, seed::D16, 0, 20, Parameter::EXPONENTIAL, true },
+    { SUBOSC_FREQ_DETUNE, seed::D25, 0, 24, Parameter::LINEAR }
+};
+
+AnalogControl *analogControls[LAST_CONTROL];
+Parameter *params[LAST_CONTROL];
+
+/**
+ * @brief Digital control definitions
+ */
 enum TripleToggle {
   TRIPTOGGLE_1,
   TRIPTOGGLE_LAST
 };
 
-constexpr Pin KNOB_1_PIN = seed::D15; // simple board: 30, Volume
-constexpr Pin KNOB_2_PIN = seed::D16; // simple board: 31, LFO Freq
-constexpr Pin KNOB_3_PIN = seed::D25; // simple board: 40, VCO Freq
+Switch3 tripleToggle1,
+    *tripleToggles[TRIPTOGGLE_LAST];
 
 constexpr Pin TRIPTOGGLE_1_UP_PIN = seed::D14;
 constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 
-// Declare a DaisySeed object called hardware
+/**
+ * Declare a DaisySeed object called hardware
+ */
 static DaisySeed  hardware;
 static Oscillator osc, subOsc, lfo;
 static MoogLadder flt;
-static Parameter  p_subOsc_freq, p_lfo_freq, p_volume;
 static MidiUsbHandler midi;
 
-// "Except for the more recent dual core MCUs, most STM32 are limited to running only one thing at a time"
-// so, no guards against modify-during-read. Good thing as _mutex_ aren't available to the compiler!
+/**
+ * @brief List of currently pressed notes
+ * 
+ * "Except for the more recent dual core MCUs, most STM32 are limited to running only one thing at a time"
+ * No guards against modify-during-read. Good thing as _mutex_ isn't available to the compiler!
+ */
 static std::list<float> noteOnList;
 
-AnalogControl knob1,
-    knob2,
-    knob3,
-    *knobs[KNOB_LAST];
-
-Switch3 tripleToggle1,
-    *tripleToggles[TRIPTOGGLE_LAST];
-
-// TODO: Make this method more efficient. 
-// I think I can shortcircuit a bunch of processing.
+// TODO: slew/glide between notes.
 void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
@@ -88,25 +112,22 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
   auto modeToggle = tripleToggle1.Read();
 
-  // IDEA: slew/glide between notes.
-  // IDEA: more (sub)harmonic oscs!
-
   if (noteOn > 0.0f) {
-    volume = 1 - p_volume.Process();
+    volume = params[VOLUME]->Process();
   } else {
     volume = 0;
   }
 
   osc.SetFreq(mtof(noteOn));
 
-  subOsc_freq = mtof(noteOn - p_subOsc_freq.Process());
+  subOsc_freq = mtof(noteOn - params[SUBOSC_FREQ_DETUNE]->Process());
 
   subOsc.SetWaveform(modeToggle == Switch3::POS_UP
     ? subOsc.WAVE_POLYBLEP_SAW
     : subOsc.WAVE_SIN);
   subOsc.SetFreq(subOsc_freq > 0.0f ? subOsc_freq : 0.0f);
 
-  lfo_freq = 20 - p_lfo_freq.Process();
+  lfo_freq = params[LFO_FREQ]->Process();
   lfo.SetFreq(lfo_freq);
 
   // Fill output buffer with samples
@@ -137,7 +158,7 @@ int main(void)
   
   hardware.Init();
 
-  InitKnobs();
+  InitAnalogControls();
   InitSwitches();
 
   hardware.SetAudioBlockSize(4);
@@ -200,11 +221,10 @@ void InitMidi() {
 
 void InitSynth(float samplerate)
 {
-  // Init freq Parameter to knob1 using MIDI note numbers
-  // min 10, max 127, curve linear
-  p_volume.Init(knob1, 0, 1, Parameter::LINEAR);
-  p_lfo_freq.Init(knob2, 0, 20, Parameter::EXPONENTIAL);
-  p_subOsc_freq.Init(knob3, 0, 24, Parameter::LINEAR);
+  for (auto defn : analogControlDefns) {
+    params[defn.name] = new Parameter();
+    params[defn.name]->Init(*analogControls[defn.name], defn.min, defn.max, defn.curve);
+  }
 
   osc.Init(samplerate);
   osc.SetWaveform(osc.WAVE_POLYBLEP_SAW);
@@ -213,7 +233,7 @@ void InitSynth(float samplerate)
 
   subOsc.Init(samplerate);
   subOsc.SetWaveform(subOsc.WAVE_POLYBLEP_SAW);
-  subOsc.SetAmp(1.f); // maybe lower the subosc vol? Or add a mixer?
+  subOsc.SetAmp(1.f);
   subOsc.SetFreq(0);
 
   lfo.Init(samplerate);
@@ -224,36 +244,31 @@ void InitSynth(float samplerate)
   flt.SetRes(0.7);
 }
 
+void InitAnalogControls() {
+  AdcChannelConfig channels[analogControlDefns.size()];
+
+  int i = 0;
+  for (auto defn : analogControlDefns) {
+    channels[i++].InitSingle(defn.pin);
+  }
+
+  hardware.adc.Init(channels, analogControlDefns.size());
+
+  for (auto defn : analogControlDefns) {
+    analogControls[defn.name] = new AnalogControl();
+    analogControls[defn.name]->Init(hardware.adc.GetPtr(defn.name), hardware.AudioCallbackRate(), defn.flipped);
+  }
+}
+
 void ProcessAnalogControls()
 {
-  knob1.Process();
-  knob2.Process();
-  knob3.Process();
+  for (auto defn : analogControlDefns)
+    analogControls[defn.name]->Process();
 }
 
 void ProcessDigitalControls()
 {
   // None at the moment.
-}
-
-void InitKnobs()
-{
-  AdcChannelConfig knob_init[KNOB_LAST];
-
-  knob_init[KNOB_1].InitSingle(KNOB_1_PIN);
-  knob_init[KNOB_2].InitSingle(KNOB_2_PIN);
-  knob_init[KNOB_3].InitSingle(KNOB_3_PIN);
-
-  hardware.adc.Init(knob_init, KNOB_LAST);
-
-  knobs[KNOB_1] = &knob1;
-  knobs[KNOB_2] = &knob2;
-  knobs[KNOB_3] = &knob3;
-
-  for (int i = 0; i < KNOB_LAST; i++)
-  {
-    knobs[i]->Init(hardware.adc.GetPtr(i), hardware.AudioCallbackRate());
-  }
 }
 
 void InitSwitches() {
