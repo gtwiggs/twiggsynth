@@ -98,7 +98,11 @@ static Port       slew;
  * No guards against modify-during-read. Good thing as _mutex_ isn't available to the compiler!
  */
 static std::list<float> noteOnList;
-static float DEFAULT_SLEW_TIME = 0.05f;
+
+/**
+ * Slew time.
+ */
+static float DEFAULT_SLEW_TIME = 0.03f;
 
 // TODO: slew/glide between notes.
 void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
@@ -232,10 +236,6 @@ void InitMidi() {
 
 void InitSynth(float samplerate)
 {
-  for (auto defn : analogControlDefns) {
-    params[defn.name].Init(analogControls[defn.name], defn.min, defn.max, defn.curve);
-  }
-
   osc.Init(samplerate);
   osc.SetWaveform(osc.WAVE_POLYBLEP_SAW);
   osc.SetAmp(1.f);
@@ -266,8 +266,16 @@ void InitAnalogControls() {
 
   hardware.adc.Init(channels, analogControlDefns.size());
 
+  // Initialize controls.
+
   for (auto defn : analogControlDefns) {
     analogControls[defn.name].Init(hardware.adc.GetPtr(defn.name), hardware.AudioCallbackRate(), defn.flipped);
+  }
+
+  // Initialize parameters - they normalize values to a range and curve.
+
+  for (auto defn : analogControlDefns) {
+    params[defn.name].Init(analogControls[defn.name], defn.min, defn.max, defn.curve);
   }
 }
 
