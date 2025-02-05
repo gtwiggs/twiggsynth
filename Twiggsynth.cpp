@@ -26,8 +26,6 @@
 #define USE_DAISYSP_LGPL
 #endif
 
-#include "daisy_seed.h"
-#include "daisysp.h"
 #include "Twiggsynth.h"
 #include <list>
 #include <vector>
@@ -35,39 +33,26 @@
 using namespace daisy;
 using namespace daisysp;
 
-/**
+/**************************************************************************************************
  * @brief Analog control definitions
  */
-enum AnalogControlName {
+enum AnalogControlName : unsigned int {
     VOLUME,
     LFO_FREQ,
     SUBOSC_FREQ_DETUNE,
     LAST_CONTROL
 };
 
-struct AnalogControlDefn {
-    AnalogControlName name;
-    Pin pin;
-    float min;
-    float max;
-    Parameter::Curve curve;
-    bool flipped;
-
-    // Constructor
-    AnalogControlDefn(AnalogControlName name, Pin pin, float min, float max, Parameter::Curve curve, bool flipped = false)
-        : name(name), pin(pin), min(min), max(max), curve(curve), flipped(flipped) {}
-};
-
 std::vector<AnalogControlDefn> analogControlDefns = {
-    { VOLUME, seed::D15, 0, 1, Parameter::LINEAR, true },
-    { LFO_FREQ, seed::D16, 0, 20, Parameter::EXPONENTIAL, true },
-    { SUBOSC_FREQ_DETUNE, seed::D25, 0, 24, Parameter::LINEAR }
+    { VOLUME,             seed::D15, 0.0f,  1.0f, Parameter::LINEAR,      true },
+    { LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::EXPONENTIAL, true },
+    { SUBOSC_FREQ_DETUNE, seed::D25, 0.0f, 24.0f, Parameter::LINEAR            }
 };
 
 AnalogControl analogControls[LAST_CONTROL];
 Parameter params[LAST_CONTROL];
 
-/**
+/**************************************************************************************************
  * @brief Digital control definitions
  */
 enum TripleToggle {
@@ -81,7 +66,7 @@ Switch3 tripleToggle1,
 constexpr Pin TRIPTOGGLE_1_UP_PIN = seed::D14;
 constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 
-/****************************************************************************************************
+/**************************************************************************************************
  * Declare a DaisySeed object called hardware
  */
 static DaisySeed  hardware;
@@ -140,7 +125,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
   subOsc.SetWaveform(modeToggle == Switch3::POS_UP
     ? subOsc.WAVE_POLYBLEP_SAW
     : subOsc.WAVE_SIN);
-  subOsc.SetFreq(subOsc_freq > 0.0f ? subOsc_freq : 0.0f);
+  subOsc.SetFreq(subOsc_freq);
 
   lfo_freq = params[LFO_FREQ].Process();
   lfo.SetFreq(lfo_freq);
