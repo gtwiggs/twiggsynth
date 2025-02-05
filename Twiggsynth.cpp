@@ -64,8 +64,8 @@ std::vector<AnalogControlDefn> analogControlDefns = {
     { SUBOSC_FREQ_DETUNE, seed::D25, 0, 24, Parameter::LINEAR }
 };
 
-AnalogControl *analogControls[LAST_CONTROL];
-Parameter *params[LAST_CONTROL];
+AnalogControl analogControls[LAST_CONTROL];
+Parameter params[LAST_CONTROL];
 
 /**
  * @brief Digital control definitions
@@ -116,28 +116,29 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
   auto modeToggle = tripleToggle1.Read();
 
   if (noteOn > 0.0f) {
-    volume = params[VOLUME]->Process();
+    volume = params[VOLUME].Process();
     slewed_freq = slew.Process(mtof(noteOn));
     slew.SetHtime(DEFAULT_SLEW_TIME);
   } else {
     volume = 0;
-    // Let slew timeout if there is no note.
+    // Force slew to timeout if there is no note.
     slewed_freq = mtof(noteOn);
     slew.SetHtime(0);
   }
 
   osc.SetFreq(slewed_freq);
 
-  // mtof === powf(2, (m - 69.0f) / 12.0f) * 440.0f;
+  // Convert the slered freq back to midi to calc the subosc freq by
+  // inverting the mtof calc: powf(2, (m - 69.0f) / 12.0f) * 440.0f;
   float slew_midi = (std::log((slewed_freq / 440.0f))/std::log(2)*12)+69.0f;
-  subOsc_freq = mtof(slew_midi - params[SUBOSC_FREQ_DETUNE]->Process());
+  subOsc_freq = mtof(slew_midi - params[SUBOSC_FREQ_DETUNE].Process());
 
   subOsc.SetWaveform(modeToggle == Switch3::POS_UP
     ? subOsc.WAVE_POLYBLEP_SAW
     : subOsc.WAVE_SIN);
   subOsc.SetFreq(subOsc_freq > 0.0f ? subOsc_freq : 0.0f);
 
-  lfo_freq = params[LFO_FREQ]->Process();
+  lfo_freq = params[LFO_FREQ].Process();
   lfo.SetFreq(lfo_freq);
 
   // Fill output buffer with samples
@@ -232,8 +233,7 @@ void InitMidi() {
 void InitSynth(float samplerate)
 {
   for (auto defn : analogControlDefns) {
-    params[defn.name] = new Parameter();
-    params[defn.name]->Init(*analogControls[defn.name], defn.min, defn.max, defn.curve);
+    params[defn.name].Init(analogControls[defn.name], defn.min, defn.max, defn.curve);
   }
 
   osc.Init(samplerate);
@@ -267,15 +267,14 @@ void InitAnalogControls() {
   hardware.adc.Init(channels, analogControlDefns.size());
 
   for (auto defn : analogControlDefns) {
-    analogControls[defn.name] = new AnalogControl();
-    analogControls[defn.name]->Init(hardware.adc.GetPtr(defn.name), hardware.AudioCallbackRate(), defn.flipped);
+    analogControls[defn.name].Init(hardware.adc.GetPtr(defn.name), hardware.AudioCallbackRate(), defn.flipped);
   }
 }
 
 void ProcessAnalogControls()
 {
   for (auto defn : analogControlDefns)
-    analogControls[defn.name]->Process();
+    analogControls[defn.name].Process();
 }
 
 void ProcessDigitalControls()
