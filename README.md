@@ -19,7 +19,8 @@ _Twigg**synth**_ is a learning platform for _so many things_. Some loose goals:
 
 **_2/5/2024_**
 
-- Monophonic dual oscillator synthesis.
+- Monophonic synthesis.
+  - Suboscillator tied to main oscillator.
   - New notes replace prior notes.
   - If a note is held, it will resume playing after later notes are released.
   - Portamento for held notes. Resets when no notes are active. Fixed at 0.05s.
