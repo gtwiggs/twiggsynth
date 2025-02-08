@@ -72,7 +72,7 @@ constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 static DaisySeed  hardware;
 static Oscillator osc, subOsc, lfo;
 static MoogLadder flt;
-static MidiUsbHandler midi;
+static MidiUartHandler midi;
 static Port       slew;
 
 
@@ -83,6 +83,8 @@ static Port       slew;
  * No guards against modify-during-read. Good thing as _mutex_ isn't available to the compiler!
  */
 static std::list<float> noteOnList;
+/** FIFO to hold messages as we're ready to print them */
+FIFO<MidiEvent, 128> event_log;
 
 /**
  * Slew time.
@@ -179,6 +181,9 @@ int main(void)
 }
 
 void ProcessMidi() {
+  uint32_t now      = System::GetNow();
+  uint32_t log_time = System::GetNow();
+
   /** Listen to MIDI for new changes */
   midi.Listen();
 
@@ -186,7 +191,7 @@ void ProcessMidi() {
   while(midi.HasEvents())
   {
     /** Pull the oldest one from the list... */
-    auto msg = midi.PopEvent();
+    MidiEvent msg = midi.PopEvent();
     switch(msg.type)
     {
       case NoteOn:
@@ -206,19 +211,49 @@ void ProcessMidi() {
         // Ignore all other message types
       default: break;
     }
+    /** Regardless of message, let's add the message data to our queue to output */
+    event_log.PushBack(msg);
   }
+
+  // Log a message if available.
+  // One at a time, every 50ms.
+  if(now - log_time > 50)
+  {
+      log_time = now;
+      hardware.PrintLine("buh0bump %d", now);
+      if(!event_log.IsEmpty())
+      {
+          auto msg = event_log.PopFront();
+          char outstr[128];
+          const char* type_str = GetMidiTypeAsString(msg);
+          sprintf(outstr,
+                  "time:\t%ld\ttype: %s\tChannel:  %d\tData MSB: "
+                  "%d\tData LSB: %d\n",
+                  now,
+                  type_str,
+                  msg.channel,
+                  msg.data[0],
+                  msg.data[1]);
+          hardware.PrintLine(outstr);
+      }
+  }
+
 }
 
-/** Initialize USB Midi 
- *  by default this is set to use the built in (USB FS) peripheral.
- * 
- *  by setting midi_cfg.transport_config.periph = MidiUsbTransport::Config::EXTERNAL
- *  the USB HS pins can be used (as FS) for MIDI 
+/** Initialize Midi
+ * rx:
+ *  D14 is the default UART 1 Rx pin 
+ *  (STM32 neme: pin 7, port 1)
+ *  D13 is the default UART 1 Tx pin
+ *  (STM32 neme: pin 6, port 1)
  */
 void InitMidi() {
-  MidiUsbHandler::Config midi_cfg;
-  midi_cfg.transport_config.periph = MidiUsbTransport::Config::INTERNAL;
-  midi.Init(midi_cfg);
+  MidiUartHandler::Config midi_config;
+  // midi_config.transport_config.rx = seed::D1;
+  // midi_config.transport_config.tx = seed::D2;
+
+  midi.Init(midi_config);
+  midi.StartReceive();
 }
 
 void InitSynth(float samplerate)

@@ -34,3 +34,21 @@ inline void ProcessAllControls()
   ProcessAnalogControls();
   ProcessDigitalControls();
 }
+
+static const char* GetMidiTypeAsString(MidiEvent& msg)
+{
+    switch(msg.type)
+    {
+        case NoteOff: return "NoteOff";
+        case NoteOn: return "NoteOn";
+        case PolyphonicKeyPressure: return "PolyKeyPres.";
+        case ControlChange: return "CC";
+        case ProgramChange: return "Prog. Change";
+        case ChannelPressure: return "Chn. Pressure";
+        case PitchBend: return "PitchBend";
+        case SystemCommon: return "Sys. Common";
+        case SystemRealTime: return "Sys. Realtime";
+        case ChannelMode: return "Chn. Mode";
+        default: return "Unknown";
+    }
+}
