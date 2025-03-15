@@ -40,13 +40,15 @@ enum AnalogControlName : unsigned int {
     VOLUME,
     LFO_FREQ,
     SUBOSC_FREQ_DETUNE,
+    RESONANCE,
     LAST_CONTROL
 };
 
 std::vector<AnalogControlDefn> analogControlDefns = {
-    { VOLUME,             seed::D15, 0.0f,  1.0f, Parameter::LINEAR,      true },
-    { LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::EXPONENTIAL, true },
-    { SUBOSC_FREQ_DETUNE, seed::D25, 0.0f, 24.0f, Parameter::LINEAR            }
+    { VOLUME,             seed::D15, 0.0f,  1.0f, Parameter::LINEAR,           },
+    { LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::EXPONENTIAL,      },
+    { SUBOSC_FREQ_DETUNE, seed::D17, 0.0f, 24.0f, Parameter::LINEAR,      true },
+    { RESONANCE,          seed::D18, 0.0f,  0.7f, Parameter::LINEAR            }
 };
 
 AnalogControl analogControls[LAST_CONTROL];
@@ -72,7 +74,7 @@ constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 static DaisySeed  hardware;
 static Oscillator osc, subOsc, lfo;
 static MoogLadder flt;
-static MidiUsbHandler midi;
+static MidiUartHandler midi;
 static Port       slew;
 
 
@@ -89,12 +91,15 @@ static std::list<float> noteOnList;
  */
 static float DEFAULT_SLEW_TIME = 0.03f;
 
+/** FIFO to hold messages as we're ready to print them */
+FIFO<MidiEvent, 128> event_log;
+
 // TODO: slew/glide between notes.
 void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float subOsc_freq, lfo_freq, filt_freq, osc_out, subOsc_out, filtered_out, volume, slewed_freq;
+  float subOsc_freq, lfo_freq, resonance, filt_freq, osc_out, subOsc_out, filtered_out, volume, slewed_freq;
 
   ProcessAllControls();
 
@@ -102,7 +107,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     ? 0.0f
     : noteOnList.front();
 
-  auto modeToggle = tripleToggle1.Read();
+  // auto modeToggle = tripleToggle1.Read();
 
   if (noteOn > 0.0f) {
     volume = params[VOLUME].Process();
@@ -122,13 +127,16 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
   float slew_midi = (std::log((slewed_freq / 440.0f))/std::log(2)*12)+69.0f;
   subOsc_freq = mtof(slew_midi - params[SUBOSC_FREQ_DETUNE].Process());
 
-  subOsc.SetWaveform(modeToggle == Switch3::POS_UP
-    ? subOsc.WAVE_POLYBLEP_SAW
-    : subOsc.WAVE_SIN);
+  // subOsc.SetWaveform(modeToggle == Switch3::POS_UP
+  //   ? subOsc.WAVE_POLYBLEP_SAW
+  //   : subOsc.WAVE_SIN);
   subOsc.SetFreq(subOsc_freq);
 
   lfo_freq = params[LFO_FREQ].Process();
   lfo.SetFreq(lfo_freq);
+
+  resonance = params[RESONANCE].Process();
+  flt.SetRes(resonance);
 
   // Fill output buffer with samples
   for(size_t i = 0; i < size; i += 2)
@@ -139,12 +147,12 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     filt_freq = 5000 + (lfo.Process() * 5000);
     flt.SetFreq(filt_freq); // hi pass filter cutoff
 
-    if (modeToggle == Switch3::POS_DOWN) {
-      filtered_out = flt.Process(osc_out);
-    } else {
+    // if (modeToggle == Switch3::POS_DOWN) {
+    //   filtered_out = flt.Process(osc_out);
+    // } else {
       filtered_out = flt.Process(osc_out + subOsc_out) / 2;
       volume *= 1.25;
-    }
+    // }
 
     //Set the left and right outputs
     out[i]     = filtered_out * volume;
@@ -158,7 +166,7 @@ int main(void)
   
   hardware.Init();
   hardware.StartLog();
-  hardware.PrintLine("Initializing ...");
+  hardware.PrintLine("Starting Twiggsynth...");
 
   InitAnalogControls();
   InitSwitches();
@@ -175,37 +183,87 @@ int main(void)
 
   hardware.StartAudio(AudioCallback);
 
-  while(1) { ProcessMidi(); }
+  ProcessMidi();
+}
+
+// TODO: Update to latest libDaisy - MidiEvent.h defines this method.
+static const char* GetTypeAsString(MidiEvent& msg)
+{
+    switch(msg.type)
+    {
+        case NoteOff: return "NoteOff";
+        case NoteOn: return "NoteOn";
+        case PolyphonicKeyPressure: return "PolyKeyPres.";
+        case ControlChange: return "CC";
+        case ProgramChange: return "Prog. Change";
+        case ChannelPressure: return "Chn. Pressure";
+        case PitchBend: return "PitchBend";
+        case SystemCommon: return "Sys. Common";
+        case SystemRealTime: return "Sys. Realtime";
+        case ChannelMode: return "Chn. Mode";
+        default: return "Unknown";
+    }
 }
 
 void ProcessMidi() {
-  /** Listen to MIDI for new changes */
-  midi.Listen();
+  uint32_t now      = System::GetNow();
+  uint32_t log_time = System::GetNow();
 
-  /** When there are messages waiting in the queue... */
-  while(midi.HasEvents())
-  {
-    /** Pull the oldest one from the list... */
-    auto msg = midi.PopEvent();
-    switch(msg.type)
+  while(1) {
+    now = System::GetNow();
+
+    /** Listen to MIDI for new changes */
+    midi.Listen();
+
+    /** When there are messages waiting in the queue... */
+    while(midi.HasEvents())
     {
-      case NoteOn:
+      /** Pull the oldest one from the list... */
+      MidiEvent msg = midi.PopEvent();
+      switch(msg.type)
       {
-        auto note_msg = msg.AsNoteOn();
-        if(note_msg.velocity != 0) {
-          noteOnList.push_front(note_msg.note);
+        case NoteOn:
+        {
+          auto note_msg = msg.AsNoteOn();
+          if(note_msg.velocity != 0) {
+            noteOnList.push_front(note_msg.note);
+          }
         }
+        break;
+        case NoteOff:
+        {
+          auto note_msg = msg.AsNoteOff();
+          noteOnList.remove(note_msg.note);
+        }
+        break;
+          // Ignore all other message types
+        default: break;
       }
-      break;
-      case NoteOff:
-      {
-        auto note_msg = msg.AsNoteOff();
-        noteOnList.remove(note_msg.note);
-      }
-      break;
-        // Ignore all other message types
-      default: break;
+
+      /** Regardless of message, let's add the message data to our queue to output */
+      // event_log.PushBack(msg);
     }
+
+    /** Now separately, every 5ms we'll print the top message in our queue if there is one */
+    // if(now - log_time > 5)
+    // {
+    //     log_time = now;
+    //     if(!event_log.IsEmpty())
+    //     {
+    //         auto msg = event_log.PopFront();
+    //         char outstr[128];
+    //         const char* type_str = GetTypeAsString(msg);
+    //         sprintf(outstr,
+    //                 "time:\t%ld\ttype: %s\tChannel:  %d\tData MSB: "
+    //                 "%d\tData LSB: %d\n",
+    //                 now,
+    //                 type_str,
+    //                 msg.channel,
+    //                 msg.data[0],
+    //                 msg.data[1]);
+    //         hardware.PrintLine(outstr);
+    //     }
+    // }
   }
 }
 
@@ -216,8 +274,7 @@ void ProcessMidi() {
  *  the USB HS pins can be used (as FS) for MIDI 
  */
 void InitMidi() {
-  MidiUsbHandler::Config midi_cfg;
-  midi_cfg.transport_config.periph = MidiUsbTransport::Config::INTERNAL;
+  MidiUartHandler::Config midi_cfg;
   midi.Init(midi_cfg);
 }
 
