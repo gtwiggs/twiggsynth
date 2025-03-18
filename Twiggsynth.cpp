@@ -33,6 +33,8 @@
 using namespace daisy;
 using namespace daisysp;
 
+#define LOG_WRITE_ENABLED 0
+
 /**************************************************************************************************
  * @brief Analog control definitions
  */
@@ -103,56 +105,48 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
   ProcessAllControls();
 
-  float noteOn = noteOnList.empty()
-    ? 0.0f
-    : noteOnList.front();
-
-  // auto modeToggle = tripleToggle1.Read();
-
-  if (noteOn > 0.0f) {
-    volume = params[VOLUME].Process();
-    slewed_freq = slew.Process(mtof(noteOn));
-    slew.SetHtime(DEFAULT_SLEW_TIME);
-  } else {
-    volume = 0;
-    // Force slew to timeout if there is no note.
-    slewed_freq = mtof(noteOn);
-    slew.SetHtime(0);
-  }
-
-  osc.SetFreq(slewed_freq);
-
-  // Convert the slered freq back to midi to calc the subosc freq by
-  // inverting the mtof calc: powf(2, (m - 69.0f) / 12.0f) * 440.0f;
-  float slew_midi = (std::log((slewed_freq / 440.0f))/std::log(2)*12)+69.0f;
-  subOsc_freq = mtof(slew_midi - params[SUBOSC_FREQ_DETUNE].Process());
-
-  // subOsc.SetWaveform(modeToggle == Switch3::POS_UP
-  //   ? subOsc.WAVE_POLYBLEP_SAW
-  //   : subOsc.WAVE_SIN);
-  subOsc.SetFreq(subOsc_freq);
-
-  lfo_freq = params[LFO_FREQ].Process();
-  lfo.SetFreq(lfo_freq);
-
-  resonance = params[RESONANCE].Process();
-  flt.SetRes(resonance);
-
   // Fill output buffer with samples
   for(size_t i = 0; i < size; i += 2)
   {
+    float noteOn = noteOnList.empty()
+      ? 0.0f
+      : noteOnList.front();
+
+    if (noteOn > 0.0f) {
+      volume = params[VOLUME].Process();
+      slewed_freq = slew.Process(mtof(noteOn));
+      slew.SetHtime(DEFAULT_SLEW_TIME);
+    } else {
+      volume = 0;
+      // Force slew to timeout if there is no note.
+      slewed_freq = mtof(noteOn);
+      slew.SetHtime(0);
+    }
+
+    osc.SetFreq(slewed_freq);
+
+    // Convert the slewed freq back to midi to calc the subosc freq.
+    // invert the mtof calc: powf(2, (m - 69.0f) / 12.0f) * 440.0f;
+    // TODO: replace with more efficient mechanism.
+    float slew_midi = (std::log((slewed_freq / 440.0f))/std::log(2)*12)+69.0f;
+    subOsc_freq = mtof(slew_midi - params[SUBOSC_FREQ_DETUNE].Process());
+
+    subOsc.SetFreq(subOsc_freq);
+
+    lfo_freq = params[LFO_FREQ].Process();
+    lfo.SetFreq(lfo_freq);
+
+    // TODO: Adjust gain based on resonance to account for the reduction in gain due to low frequencies cutoff by filter.
+    resonance = params[RESONANCE].Process();
+    flt.SetRes(resonance);
+
     osc_out = osc.Process();
     subOsc_out = subOsc.Process();
 
     filt_freq = 5000 + (lfo.Process() * 5000);
-    flt.SetFreq(filt_freq); // hi pass filter cutoff
+    flt.SetFreq(filt_freq); // high pass filter cutoff
 
-    // if (modeToggle == Switch3::POS_DOWN) {
-    //   filtered_out = flt.Process(osc_out);
-    // } else {
-      filtered_out = flt.Process(osc_out + subOsc_out) / 2;
-      volume *= 1.25;
-    // }
+    filtered_out = flt.Process(osc_out + subOsc_out) / 2;
 
     //Set the left and right outputs
     out[i]     = filtered_out * volume;
@@ -245,25 +239,30 @@ void ProcessMidi() {
     }
 
     /** Now separately, every 5ms we'll print the top message in our queue if there is one */
-    // if(now - log_time > 5)
-    // {
-    //     log_time = now;
-    //     if(!event_log.IsEmpty())
-    //     {
-    //         auto msg = event_log.PopFront();
-    //         char outstr[128];
-    //         const char* type_str = GetTypeAsString(msg);
-    //         sprintf(outstr,
-    //                 "time:\t%ld\ttype: %s\tChannel:  %d\tData MSB: "
-    //                 "%d\tData LSB: %d\n",
-    //                 now,
-    //                 type_str,
-    //                 msg.channel,
-    //                 msg.data[0],
-    //                 msg.data[1]);
-    //         hardware.PrintLine(outstr);
-    //     }
-    // }
+    if(now - log_time > 5)
+    {
+        log_time = now;
+        if(!event_log.IsEmpty())
+        {
+          // Remove message from queue but only log it if logging is enabled. 
+          // This allows the queue to be cleaned-up even if logging is disabled.
+          auto msg = event_log.PopFront();
+
+          if (LOG_WRITE_ENABLED) {
+            char outstr[128];
+            const char* type_str = GetTypeAsString(msg);
+            sprintf(outstr,
+                    "time:\t%ld\ttype: %s\tChannel:  %d\tData MSB: "
+                    "%d\tData LSB: %d\n",
+                    now,
+                    type_str,
+                    msg.channel,
+                    msg.data[0],
+                    msg.data[1]);
+            hardware.PrintLine(outstr);
+          }
+        }
+    }
   }
 }
 
