@@ -83,7 +83,7 @@
       "command": "make",
       "label": "build_libdaisy",
       "options": {
-        "cwd": "${config:daisyExamplesFolder}/libDaisy"
+        "cwd": "${config:electrosmithFolder}/libDaisy"
       },
       "problemMatcher": [
         "$gcc"
@@ -94,7 +94,7 @@
       "command": "make",
       "label": "build_daisysp",
       "options": {
-        "cwd": "${config:daisyExamplesFolder}/DaisySP"
+        "cwd": "${config:electrosmithFolder}/DaisySP"
       },
       "problemMatcher": [
         "$gcc"
