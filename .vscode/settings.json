@@ -1,5 +1,5 @@
 {
-  "daisyExamplesFolder": "${workspaceFolder}/../DaisyExamples",
+  "daisyExamplesFolder": "${workspaceFolder}/../electro-smith/DaisyExamples",
   "workspaceKeybindings.daisyseed.enabled": true,
   "files.associations": {
     "iostream": "cpp",

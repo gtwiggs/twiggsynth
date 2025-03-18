@@ -4,7 +4,7 @@ TARGET = Twiggsynth
 USE_DAISYSP_LGPL = 1
 
 # DaisyExample repo root directory
-DAISYEXAMPLES_DIR = ../DaisyExamples
+DAISYEXAMPLES_DIR = ../electro-smith/DaisyExamples
 
 # Sources
 CPP_SOURCES = Twiggsynth.cpp
