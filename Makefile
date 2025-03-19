@@ -3,8 +3,13 @@ TARGET = Twiggsynth
 
 USE_DAISYSP_LGPL = 1
 
+C_INCLUDES = \
+	-ISource/
+
 # Sources
-CPP_SOURCES = Twiggsynth.cpp
+CPP_SOURCES = \
+	Source/TsPort.cpp \
+	Twiggsynth.cpp
 
 # Library Locations
 LIBDAISY_DIR = ../electro-smith/libDaisy

@@ -27,6 +27,7 @@
 #endif
 
 #include "Twiggsynth.h"
+#include "TsPort.h"
 #include <list>
 #include <vector>
 
@@ -47,10 +48,10 @@ enum AnalogControlName : unsigned int {
 };
 
 std::vector<AnalogControlDefn> analogControlDefns = {
-    { VOLUME,             seed::D15, 0.0f,  1.0f, Parameter::LINEAR,           },
-    { LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::EXPONENTIAL,      },
-    { SUBOSC_FREQ_DETUNE, seed::D17, 0.0f, 24.0f, Parameter::LINEAR,      true },
-    { RESONANCE,          seed::D18, 0.0f,  0.7f, Parameter::LINEAR            }
+    { VOLUME,             seed::D15, 0.0f,  1.0f, Parameter::LINEAR           },
+    { LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::LINEAR           },
+    { SUBOSC_FREQ_DETUNE, seed::D17, 0.0f, 24.0f, Parameter::LINEAR,     true },
+    { RESONANCE,          seed::D18, 0.0f,  1.8f, Parameter::EXPONENTIAL      }
 };
 
 AnalogControl analogControls[LAST_CONTROL];
@@ -73,12 +74,13 @@ constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 /**************************************************************************************************
  * Declare a DaisySeed object called hardware
  */
-static DaisySeed  hardware;
-static Oscillator osc, subOsc, lfo;
-static MoogLadder flt;
-static MidiUartHandler midi;
-static Port       slew;
-
+static DaisySeed        hardware;
+static Oscillator       osc, subOsc, lfo;
+static LadderFilter     flt;
+static MidiUartHandler  midi;
+static TsPort           slew;
+static Adsr             env;
+static float            playing_note;
 
 /**
  * @brief List of currently pressed notes
@@ -101,7 +103,8 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float subOsc_freq, lfo_freq, resonance, filt_freq, osc_out, subOsc_out, filtered_out, volume, slewed_freq;
+  float subOsc_freq, lfo_freq, resonance, osc_out, subOsc_out, filtered_out, env_out, volume, slewed_freq, cutoff;
+  bool gate;
 
   ProcessAllControls();
 
@@ -113,15 +116,28 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
       : noteOnList.front();
 
     if (noteOn > 0.0f) {
-      volume = params[VOLUME].Process();
-      slewed_freq = slew.Process(mtof(noteOn));
-      slew.SetHtime(DEFAULT_SLEW_TIME);
+      if (playing_note == 0.0f) {
+        slew.SetFreq(mtof(noteOn));
+      }
+      playing_note = noteOn;
+      slewed_freq = slew.Process(mtof(playing_note));
+      gate = true;
     } else {
-      volume = 0;
-      // Force slew to timeout if there is no note.
-      slewed_freq = mtof(noteOn);
-      slew.SetHtime(0);
+      if (env.IsRunning()) {
+        slewed_freq = slew.Process(mtof(playing_note));
+      } else {
+        playing_note = 0.0f;
+        slewed_freq = mtof(0.0f);
+      }
+      gate = false;
     }
+
+    volume = params[VOLUME].Process();
+
+    env_out = env.Process(gate);
+
+    osc.SetAmp(env_out);
+    subOsc.SetAmp(env_out);
 
     osc.SetFreq(slewed_freq);
 
@@ -136,15 +152,15 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     lfo_freq = params[LFO_FREQ].Process();
     lfo.SetFreq(lfo_freq);
 
-    // TODO: Adjust gain based on resonance to account for the reduction in gain due to low frequencies cutoff by filter.
     resonance = params[RESONANCE].Process();
     flt.SetRes(resonance);
 
     osc_out = osc.Process();
     subOsc_out = subOsc.Process();
 
-    filt_freq = 5000 + (lfo.Process() * 5000);
-    flt.SetFreq(filt_freq); // high pass filter cutoff
+    cutoff = 2000.0f;
+    cutoff *= exp2f(lfo.Process() * 2.0f);
+    flt.SetFreq(cutoff);
 
     filtered_out = flt.Process(osc_out + subOsc_out) / 2;
 
@@ -200,8 +216,8 @@ static const char* GetTypeAsString(MidiEvent& msg)
 }
 
 void ProcessMidi() {
-  uint32_t now      = System::GetNow();
-  uint32_t log_time = System::GetNow();
+  auto now      = System::GetNow();
+  auto log_time = System::GetNow();
 
   while(1) {
     now = System::GetNow();
@@ -266,12 +282,6 @@ void ProcessMidi() {
   }
 }
 
-/** Initialize USB Midi 
- *  by default this is set to use the built in (USB FS) peripheral.
- * 
- *  by setting midi_cfg.transport_config.periph = MidiUsbTransport::Config::EXTERNAL
- *  the USB HS pins can be used (as FS) for MIDI 
- */
 void InitMidi() {
   MidiUartHandler::Config midi_cfg;
   midi.Init(midi_cfg);
@@ -292,9 +302,18 @@ void InitSynth(float samplerate)
   lfo.Init(samplerate);
   lfo.SetWaveform(lfo.WAVE_POLYBLEP_TRI);
   lfo.SetFreq(0.1);
+  lfo.SetAmp(1.0f);
 
   flt.Init(samplerate);
-  flt.SetRes(0.7);
+  flt.SetRes(0.5);
+  flt.SetInputDrive(1.0f);
+  flt.SetFilterMode(LadderFilter::FilterMode::LP12);
+
+  env.Init(samplerate);
+  env.SetTime(ADSR_SEG_ATTACK, .005);
+  env.SetTime(ADSR_SEG_DECAY, .0);
+  env.SetTime(ADSR_SEG_RELEASE, .005);
+  env.SetSustainLevel(1.0);
 
   slew.Init(samplerate, DEFAULT_SLEW_TIME);
 }
