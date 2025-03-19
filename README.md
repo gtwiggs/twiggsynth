@@ -1,34 +1,32 @@
-# Twiggsynth
+# Twigg*synth*
 
 ## Author
 
-Gtwiggs
+@Gtwiggs
 
 ## Description
 
-A digital synthesis musical instrument.
-
-_Twigg**synth**_ is a learning platform for _so many things_. Some loose goals:
-
-- Organizing code to make the addition/removal and declaration of hardware components easy.
-- Software-based routing between instrument components based on panel input.
-- Self-playing, maybe with seed note(s).
-- Paraphonic.
+A learning platform for music synthesis using a Daisy Seed.
 
 ## State Of Play
 
-**_3/14/2025_**
+**_3/19/2025_**
 
-- Monophonic synthesizer.
+- 2 Oscillator Monophonic synthesizer.
   - Suboscillator tied to main oscillator.
-  - New notes replace prior notes.
+  - Oscillator and suboscillator waveform: sawtooth.
+  - Latest note priority.
   - If a note is held, it will resume playing after later notes are released.
-  - Portamento for held notes. Resets when no notes are active. Fixed at 0.05s.
+  - Portamento across entire range. Resets when no notes are active. Fixed glide time of 0.05s.
 - Mono output.
-- Note input via UART MIDI.
+- LFO Mod source; waveform: triangle
+- Ladder Filter.
+  - Low Pass 2 pole filter.
+- Fixed ADSR envelope.
+- Note on/off input via UART MIDI.
   - Listens on all channels.
 - Hardware controls:
   - Volume
-  - LFO frequency: LFO modulates the Moog Ladder filter cutoff.
-  - Sub-oscillator detune: 0 to -2 octaves. Waveform: Sawtooth
-  - Moog Ladder flter resonance.
+  - LFO frequency: modulates the filter cutoff.
+  - Sub-oscillator detune: 0 to -2 octaves.
+  - Flter resonance.
