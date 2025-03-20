@@ -80,7 +80,8 @@ static LadderFilter     flt;
 static MidiUartHandler  midi;
 static TsPort           slew;
 static Adsr             env;
-static float            playing_note;
+static float            playing_note = 0.0f;
+static float            pitch_bend_as_semitone = 0.0f;
 
 /**
  * @brief List of currently pressed notes
@@ -117,14 +118,14 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
     if (noteOn > 0.0f) {
       if (playing_note == 0.0f) {
-        slew.SetFreq(mtof(noteOn));
+        slew.SetFreq(mtof(noteOn + pitch_bend_as_semitone));
       }
       playing_note = noteOn;
-      slewed_freq = slew.Process(mtof(playing_note));
+      slewed_freq = slew.Process(mtof(playing_note + pitch_bend_as_semitone));
       gate = true;
     } else {
       if (env.IsRunning()) {
-        slewed_freq = slew.Process(mtof(playing_note));
+        slewed_freq = slew.Process(mtof(playing_note + pitch_bend_as_semitone));
       } else {
         playing_note = 0.0f;
         slewed_freq = mtof(0.0f);
@@ -196,25 +197,6 @@ int main(void)
   ProcessMidi();
 }
 
-// TODO: Update to latest libDaisy - MidiEvent.h defines this method.
-static const char* GetTypeAsString(MidiEvent& msg)
-{
-    switch(msg.type)
-    {
-        case NoteOff: return "NoteOff";
-        case NoteOn: return "NoteOn";
-        case PolyphonicKeyPressure: return "PolyKeyPres.";
-        case ControlChange: return "CC";
-        case ProgramChange: return "Prog. Change";
-        case ChannelPressure: return "Chn. Pressure";
-        case PitchBend: return "PitchBend";
-        case SystemCommon: return "Sys. Common";
-        case SystemRealTime: return "Sys. Realtime";
-        case ChannelMode: return "Chn. Mode";
-        default: return "Unknown";
-    }
-}
-
 void ProcessMidi() {
   auto now      = System::GetNow();
   auto log_time = System::GetNow();
@@ -246,12 +228,19 @@ void ProcessMidi() {
           noteOnList.remove(note_msg.note);
         }
         break;
-          // Ignore all other message types
+        case PitchBend:
+        {
+          auto bend_msg = msg.AsPitchBend();
+          // Normalize pitch bend to 12 semitones.
+          pitch_bend_as_semitone = (bend_msg.value / 8192.0f) * 12.0f;
+        }
+        break;
+        // Ignore all other message types
         default: break;
       }
 
       /** Regardless of message, let's add the message data to our queue to output */
-      // event_log.PushBack(msg);
+      event_log.PushBack(msg);
     }
 
     /** Now separately, every 5ms we'll print the top message in our queue if there is one */
@@ -262,11 +251,11 @@ void ProcessMidi() {
         {
           // Remove message from queue but only log it if logging is enabled. 
           // This allows the queue to be cleaned-up even if logging is disabled.
-          auto msg = event_log.PopFront();
+          MidiEvent msg = event_log.PopFront();
 
           if (LOG_WRITE_ENABLED) {
             char outstr[128];
-            const char* type_str = GetTypeAsString(msg);
+            const char* type_str = MidiEvent::GetTypeAsString(msg);
             sprintf(outstr,
                     "time:\t%ld\ttype: %s\tChannel:  %d\tData MSB: "
                     "%d\tData LSB: %d\n",

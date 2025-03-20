@@ -23,7 +23,10 @@ A learning platform for music synthesis using a Daisy Seed.
 - Ladder Filter.
   - Low Pass 2 pole filter.
 - Fixed ADSR envelope.
-- Note on/off input via UART MIDI.
+- MIDI Support:
+  - UART MIDI ~ 5 pin DIN.
+  - Note on/off.
+  - Pitch bend +/- 1 octave.
   - Listens on all channels.
 - Hardware controls:
   - Volume
