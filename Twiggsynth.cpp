@@ -35,34 +35,35 @@ using namespace daisysp;
 /**************************************************************************************************
  * @brief Analog control definitions
  */
-enum AnalogControlName : unsigned int {
-    VOLUME,
-    LFO_FREQ,
-    SUBOSC_FREQ_DETUNE,
-    RESONANCE,
-    LAST_CONTROL
+enum AnalogControlName : unsigned int
+{
+  VOLUME,
+  LFO_FREQ,
+  SUBOSC_FREQ_DETUNE,
+  RESONANCE,
+  LAST_CONTROL
 };
 
 std::vector<AnalogControlDefn> analogControlDefns = {
-    { VOLUME,             seed::D15, 0.0f,  1.0f, Parameter::LINEAR           },
-    { LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::LINEAR           },
-    { SUBOSC_FREQ_DETUNE, seed::D17, 0.0f, 26.0f, Parameter::LINEAR,     true },
-    { RESONANCE,          seed::D18, 0.0f,  1.8f, Parameter::EXPONENTIAL      }
+    {VOLUME,             seed::D15, 0.0f, 1.0f,  Parameter::LINEAR,      false},
+    {LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::LINEAR,      false},
+    {SUBOSC_FREQ_DETUNE, seed::D17, 0.0f, 26.0f, Parameter::LINEAR,      true },
+    {RESONANCE,          seed::D18, 0.0f, 1.8f,  Parameter::EXPONENTIAL, false}
 };
 
 AnalogControl analogControls[LAST_CONTROL];
-Parameter params[LAST_CONTROL];
+Parameter     params[LAST_CONTROL];
 
 /**************************************************************************************************
  * @brief Digital control definitions
  */
-enum TripleToggle {
+enum TripleToggle
+{
   TRIPTOGGLE_1,
   TRIPTOGGLE_LAST
 };
 
-Switch3 tripleToggle1,
-    *tripleToggles[TRIPTOGGLE_LAST];
+Switch3 tripleToggle1, *tripleToggles[TRIPTOGGLE_LAST];
 
 constexpr Pin TRIPTOGGLE_1_UP_PIN = seed::D14;
 constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
@@ -70,22 +71,22 @@ constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 /**************************************************************************************************
  * Declare a DaisySeed object called hardware
  */
-static DaisySeed        hardware;
-static Oscillator       osc, subOsc, lfo;
-static LadderFilter     flt;
-static MidiUartHandler  midi;
-static TsPort           slew;
-static Adsr             env;
-static Wavefolder       wf;
-static Wavefolder       subWf;
-static Limiter          limiter;
-static float            playing_note = 0.0f;
-static float            pitch_bend_as_semitone = 0.0f;
-static float            mod_wheel = 0.0f;
+static DaisySeed       hardware;
+static Oscillator      osc, subOsc, lfo;
+static LadderFilter    flt;
+static MidiUartHandler midi;
+static TsPort          slew;
+static Adsr            env;
+static Wavefolder      wf;
+static Wavefolder      subWf;
+static Limiter         limiter;
+static float           playing_note           = 0.0f;
+static float           pitch_bend_as_semitone = 0.0f;
+static float           mod_wheel              = 0.0f;
 
 /**
  * @brief List of currently pressed notes
- * 
+ *
  * "Except for the more recent dual core MCUs, most STM32 are limited to running only one thing at a time"
  * No guards against modify-during-read. Good thing as _mutex_ isn't available to the compiler!
  */
@@ -104,7 +105,8 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float subOsc_freq, lfo_freq, resonance, osc_out, subOsc_out, filtered_out, env_out, volume, slewed_freq, cutoff;
+  float subOsc_freq, lfo_freq, resonance, osc_out, subOsc_out, filtered_out,
+      env_out, volume, slewed_freq, cutoff;
   bool gate;
 
   ProcessAllControls();
@@ -112,23 +114,28 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
   // Fill output buffer with samples
   for(size_t i = 0; i < size; i += 2)
   {
-    float noteOn = noteOnList.empty()
-      ? 0.0f
-      : noteOnList.front();
+    float noteOn = noteOnList.empty() ? 0.0f : noteOnList.front();
 
-    if (noteOn > 0.0f) {
-      if (playing_note == 0.0f) {
+    if(noteOn > 0.0f)
+    {
+      if(playing_note == 0.0f)
+      {
         slew.SetFreq(mtof(noteOn + pitch_bend_as_semitone));
       }
       playing_note = noteOn;
-      slewed_freq = slew.Process(mtof(playing_note + pitch_bend_as_semitone));
-      gate = true;
-    } else {
-      if (env.IsRunning()) {
+      slewed_freq  = slew.Process(mtof(playing_note + pitch_bend_as_semitone));
+      gate         = true;
+    }
+    else
+    {
+      if(env.IsRunning())
+      {
         slewed_freq = slew.Process(mtof(playing_note + pitch_bend_as_semitone));
-      } else {
+      }
+      else
+      {
         playing_note = 0.0f;
-        slewed_freq = mtof(0.0f);
+        slewed_freq  = mtof(0.0f);
       }
       gate = false;
     }
@@ -145,9 +152,13 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     // Convert the slewed freq back to midi to calc the subosc freq.
     // invert the mtof calc: powf(2, (m - 69.0f) / 12.0f) * 440.0f;
     // TODO: replace with more efficient mechanism.
-    float slew_midi = (std::log((slewed_freq / 440.0f))/std::log(2)*12)+69.0f;
+    float slew_midi
+        = (std::log((slewed_freq / 440.0f)) / std::log(2) * 12) + 69.0f;
     // The detune control range is 0-26, so I reduce by 1 and clamp to 0-24 to ensure coverage at the intended limits.
-    subOsc_freq = mtof(slew_midi - daisysp::fclamp(params[SUBOSC_FREQ_DETUNE].Process() - 1.f, 0.0f, 24.0f));
+    subOsc_freq
+        = mtof(slew_midi
+               - daisysp::fclamp(
+                   params[SUBOSC_FREQ_DETUNE].Process() - 1.f, 0.0f, 24.0f));
 
     subOsc.SetFreq(subOsc_freq);
 
@@ -160,11 +171,11 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     // Use the mod wheel to get a value for the wavefolder gain.
     // Adapted from https://github.com/electro-smith/DaisySP/pull/175
     auto mod = (mod_wheel / 127.0f);
-    
-		wf.SetGain(0.5f + mod * 19.5f);
-		subWf.SetGain(0.5f + mod * 19.5f);
 
-    osc_out = wf.Process(osc.Process());
+    wf.SetGain(0.5f + mod * 19.5f);
+    subWf.SetGain(0.5f + mod * 19.5f);
+
+    osc_out    = wf.Process(osc.Process());
     subOsc_out = subWf.Process(subOsc.Process());
 
     // Filter the output using an LFO to mod the cutoff frequency.
@@ -173,8 +184,8 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     flt.SetFreq(cutoff);
     filtered_out = flt.Process(osc_out + subOsc_out) / 2;
 
-    //Set the left and right outputs
-    
+    // Set the left and right outputs
+
     out[i]     = filtered_out * volume;
     out[i + 1] = filtered_out * volume;
   }
@@ -184,7 +195,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 int main(void)
 {
   noteOnList = std::list<float>();
-  
+
   hardware.Init();
   hardware.StartLog();
   hardware.PrintLine("Starting Twiggsynth...");
@@ -198,7 +209,7 @@ int main(void)
   InitMidi();
 
   // let everything settle
-	System::Delay(100);
+  System::Delay(100);
 
   hardware.adc.Start();
 
@@ -207,11 +218,13 @@ int main(void)
   ProcessMidi();
 }
 
-void ProcessMidi() {
+void ProcessMidi()
+{
   auto now      = System::GetNow();
   auto log_time = System::GetNow();
 
-  while(1) {
+  while(1)
+  {
     now = System::GetNow();
 
     /** Listen to MIDI for new changes */
@@ -227,7 +240,8 @@ void ProcessMidi() {
         case NoteOn:
         {
           auto note_msg = msg.AsNoteOn();
-          if(note_msg.velocity != 0) {
+          if(note_msg.velocity != 0)
+          {
             noteOnList.push_front(note_msg.note);
           }
         }
@@ -248,13 +262,13 @@ void ProcessMidi() {
         case ControlChange:
         {
           auto cc_msg = msg.AsControlChange();
-          switch(cc_msg.control_number) {
+          switch(cc_msg.control_number)
+          {
             case 1: // Modulation Wheel
               // Preserve raw value for consumer to eval as desired: 0-127.0f
               mod_wheel = cc_msg.value;
               break;
-            default:
-              break;
+            default: break;
           }
         }
         break;
@@ -269,32 +283,34 @@ void ProcessMidi() {
     /** Now separately, every 5ms we'll print the top message in our queue if there is one */
     if(now - log_time > 5)
     {
-        log_time = now;
-        if(!event_log.IsEmpty())
-        {
-          // Remove message from queue but only log it if logging is enabled. 
-          // This allows the queue to be cleaned-up even if logging is disabled.
-          MidiEvent msg = event_log.PopFront();
+      log_time = now;
+      if(!event_log.IsEmpty())
+      {
+        // Remove message from queue but only log it if logging is enabled.
+        // This allows the queue to be cleaned-up even if logging is disabled.
+        MidiEvent msg = event_log.PopFront();
 
-          if (LOG_WRITE_ENABLED) {
-            char outstr[128];
-            const char* type_str = MidiEvent::GetTypeAsString(msg);
-            sprintf(outstr,
-                    "time:\t%ld\ttype: %s\tChannel:  %d\tData MSB: "
-                    "%d\tData LSB: %d\n",
-                    now,
-                    type_str,
-                    msg.channel,
-                    msg.data[0],
-                    msg.data[1]);
-            hardware.PrintLine(outstr);
-          }
+        if(LOG_WRITE_ENABLED)
+        {
+          char        outstr[128];
+          const char *type_str = MidiEvent::GetTypeAsString(msg);
+          sprintf(outstr,
+                  "time:\t%ld\ttype: %s\tChannel:  %d\tData MSB: "
+                  "%d\tData LSB: %d\n",
+                  now,
+                  type_str,
+                  msg.channel,
+                  msg.data[0],
+                  msg.data[1]);
+          hardware.PrintLine(outstr);
         }
+      }
     }
   }
 }
 
-void InitMidi() {
+void InitMidi()
+{
   MidiUartHandler::Config midi_cfg;
   midi.Init(midi_cfg);
 }
@@ -335,11 +351,13 @@ void InitSynth(float samplerate)
   slew.Init(samplerate, DEFAULT_SLEW_TIME);
 }
 
-void InitAnalogControls() {
+void InitAnalogControls()
+{
   AdcChannelConfig channels[analogControlDefns.size()];
 
   int i = 0;
-  for (auto defn : analogControlDefns) {
+  for(auto defn : analogControlDefns)
+  {
     channels[i++].InitSingle(defn.pin);
   }
 
@@ -347,20 +365,25 @@ void InitAnalogControls() {
 
   // Initialize controls.
 
-  for (auto defn : analogControlDefns) {
-    analogControls[defn.name].Init(hardware.adc.GetPtr(defn.name), hardware.AudioCallbackRate(), defn.flipped);
+  for(auto defn : analogControlDefns)
+  {
+    analogControls[defn.name].Init(hardware.adc.GetPtr(defn.name),
+                                   hardware.AudioCallbackRate(),
+                                   defn.flipped);
   }
 
   // Initialize parameters - they normalize values to a range and curve.
 
-  for (auto defn : analogControlDefns) {
-    params[defn.name].Init(analogControls[defn.name], defn.min, defn.max, defn.curve);
+  for(auto defn : analogControlDefns)
+  {
+    params[defn.name].Init(
+        analogControls[defn.name], defn.min, defn.max, defn.curve);
   }
 }
 
 void ProcessAnalogControls()
 {
-  for (auto ctl : analogControls)
+  for(auto ctl : analogControls)
     ctl.Process();
 }
 
@@ -369,7 +392,8 @@ void ProcessDigitalControls()
   // None at the moment.
 }
 
-void InitSwitches() {
+void InitSwitches()
+{
   tripleToggle1.Init(TRIPTOGGLE_1_UP_PIN, TRIPTOGGLE_1_DN_PIN);
 
   tripleToggles[TRIPTOGGLE_1] = &tripleToggle1;

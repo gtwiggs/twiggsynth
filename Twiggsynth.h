@@ -6,17 +6,25 @@ using namespace daisysp;
 
 enum AnalogControlName : unsigned int;
 
-struct AnalogControlDefn {
+struct AnalogControlDefn
+{
     AnalogControlName name;
-    Pin pin;
-    float min;
-    float max;
-    Parameter::Curve curve;
-    bool flipped;
+    Pin               pin;
+    float             min;
+    float             max;
+    Parameter::Curve  curve;
+    bool              flipped;
 
     // Constructor
-    AnalogControlDefn(AnalogControlName name, Pin pin, float min, float max, Parameter::Curve curve, bool flipped = false)
-        : name(name), pin(pin), min(min), max(max), curve(curve), flipped(flipped) {}
+    AnalogControlDefn(AnalogControlName name,
+                      Pin               pin,
+                      float             min,
+                      float             max,
+                      Parameter::Curve  curve,
+                      bool              flipped = false)
+    : name(name), pin(pin), min(min), max(max), curve(curve), flipped(flipped)
+    {
+    }
 };
 
 void InitMidi();
@@ -31,6 +39,6 @@ void ProcessMidi();
 /** Process Analog and Digital Controls */
 inline void ProcessAllControls()
 {
-  ProcessAnalogControls();
-  ProcessDigitalControls();
+    ProcessAnalogControls();
+    ProcessDigitalControls();
 }
