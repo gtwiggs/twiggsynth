@@ -1,6 +1,5 @@
 {
   "electrosmithFolder": "${workspaceFolder}/../electro-smith",
-  "workspaceKeybindings.daisyseed.enabled": true,
   "files.associations": {
     "iostream": "cpp",
     "cmath": "cpp",

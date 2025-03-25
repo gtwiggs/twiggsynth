@@ -22,10 +22,6 @@
 // VIN           47  |       |   02    D1
 // DGND          48  |       |   01    D0
 
-#ifndef USE_DAISYSP_LGPL
-#define USE_DAISYSP_LGPL
-#endif
-
 #include "Twiggsynth.h"
 #include "TsPort.h"
 #include <list>
@@ -50,7 +46,7 @@ enum AnalogControlName : unsigned int {
 std::vector<AnalogControlDefn> analogControlDefns = {
     { VOLUME,             seed::D15, 0.0f,  1.0f, Parameter::LINEAR           },
     { LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::LINEAR           },
-    { SUBOSC_FREQ_DETUNE, seed::D17, 0.0f, 24.0f, Parameter::LINEAR,     true },
+    { SUBOSC_FREQ_DETUNE, seed::D17, 0.0f, 26.0f, Parameter::LINEAR,     true },
     { RESONANCE,          seed::D18, 0.0f,  1.8f, Parameter::EXPONENTIAL      }
 };
 
@@ -80,8 +76,12 @@ static LadderFilter     flt;
 static MidiUartHandler  midi;
 static TsPort           slew;
 static Adsr             env;
+static Wavefolder       wf;
+static Wavefolder       subWf;
+static Limiter          limiter;
 static float            playing_note = 0.0f;
 static float            pitch_bend_as_semitone = 0.0f;
+static float            mod_wheel = 0.0f;
 
 /**
  * @brief List of currently pressed notes
@@ -146,7 +146,8 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     // invert the mtof calc: powf(2, (m - 69.0f) / 12.0f) * 440.0f;
     // TODO: replace with more efficient mechanism.
     float slew_midi = (std::log((slewed_freq / 440.0f))/std::log(2)*12)+69.0f;
-    subOsc_freq = mtof(slew_midi - params[SUBOSC_FREQ_DETUNE].Process());
+    // The detune control range is 0-26, so I reduce by 1 and clamp to 0-24 to ensure coverage at the intended limits.
+    subOsc_freq = mtof(slew_midi - daisysp::fclamp(params[SUBOSC_FREQ_DETUNE].Process() - 1.f, 0.0f, 24.0f));
 
     subOsc.SetFreq(subOsc_freq);
 
@@ -156,19 +157,28 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     resonance = params[RESONANCE].Process();
     flt.SetRes(resonance);
 
-    osc_out = osc.Process();
-    subOsc_out = subOsc.Process();
+    // Use the mod wheel to get a value for the wavefolder gain.
+    // Adapted from https://github.com/electro-smith/DaisySP/pull/175
+    auto mod = (mod_wheel / 127.0f);
+    
+		wf.SetGain(0.5f + mod * 19.5f);
+		subWf.SetGain(0.5f + mod * 19.5f);
 
+    osc_out = wf.Process(osc.Process());
+    subOsc_out = subWf.Process(subOsc.Process());
+
+    // Filter the output using an LFO to mod the cutoff frequency.
     cutoff = 2000.0f;
     cutoff *= exp2f(lfo.Process() * 2.0f);
     flt.SetFreq(cutoff);
-
     filtered_out = flt.Process(osc_out + subOsc_out) / 2;
 
     //Set the left and right outputs
+    
     out[i]     = filtered_out * volume;
     out[i + 1] = filtered_out * volume;
   }
+  limiter.ProcessBlock(out, size * 2, 0.8f);
 }
 
 int main(void)
@@ -231,8 +241,21 @@ void ProcessMidi() {
         case PitchBend:
         {
           auto bend_msg = msg.AsPitchBend();
-          // Normalize pitch bend to 12 semitones.
+          // Normalize pitch bend to 12 semitones. Provides a pitch bend range of 1 octave up and down.
           pitch_bend_as_semitone = (bend_msg.value / 8192.0f) * 12.0f;
+        }
+        break;
+        case ControlChange:
+        {
+          auto cc_msg = msg.AsControlChange();
+          switch(cc_msg.control_number) {
+            case 1: // Modulation Wheel
+              // Preserve raw value for consumer to eval as desired: 0-127.0f
+              mod_wheel = cc_msg.value;
+              break;
+            default:
+              break;
+          }
         }
         break;
         // Ignore all other message types
@@ -301,8 +324,13 @@ void InitSynth(float samplerate)
   env.Init(samplerate);
   env.SetTime(ADSR_SEG_ATTACK, .005);
   env.SetTime(ADSR_SEG_DECAY, .0);
-  env.SetTime(ADSR_SEG_RELEASE, .005);
+  env.SetTime(ADSR_SEG_RELEASE, .05);
   env.SetSustainLevel(1.0);
+
+  wf.Init();
+  subWf.Init();
+
+  limiter.Init();
 
   slew.Init(samplerate, DEFAULT_SLEW_TIME);
 }

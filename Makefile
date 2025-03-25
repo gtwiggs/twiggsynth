@@ -3,8 +3,7 @@ TARGET = Twiggsynth
 
 USE_DAISYSP_LGPL = 1
 
-C_INCLUDES = \
-	-ISource/
+C_INCLUDES = -ISource/
 
 # Sources
 CPP_SOURCES = \
