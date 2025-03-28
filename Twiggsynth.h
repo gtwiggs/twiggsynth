@@ -30,7 +30,7 @@ struct AnalogControlDefn
 void InitMidi();
 void InitSynth(float samplerate);
 void InitAnalogControls();
-void InitSwitches();
+void InitDigitalControls(float samplerate);
 
 void ProcessAnalogControls();
 void ProcessDigitalControls();

@@ -41,6 +41,8 @@ enum AnalogControlName : unsigned int
   LFO_FREQ,
   SUBOSC_FREQ_DETUNE,
   RESONANCE,
+  ATTACK,
+  RELEASE,
   LAST_CONTROL
 };
 
@@ -48,7 +50,9 @@ std::vector<AnalogControlDefn> analogControlDefns = {
     {VOLUME,             seed::D15, 0.0f, 1.0f,  Parameter::LINEAR,      false},
     {LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::LINEAR,      false},
     {SUBOSC_FREQ_DETUNE, seed::D17, 0.0f, 26.0f, Parameter::LINEAR,      true },
-    {RESONANCE,          seed::D18, 0.0f, 1.8f,  Parameter::EXPONENTIAL, false}
+    {RESONANCE,          seed::D18, 0.0f, 1.8f,  Parameter::EXPONENTIAL, false},
+    {ATTACK,             seed::D19, 0.0f, 10.f,  Parameter::EXPONENTIAL, false},
+    {RELEASE,            seed::D20, 0.0f, 10.f,  Parameter::EXPONENTIAL, false}
 };
 
 AnalogControl analogControls[LAST_CONTROL];
@@ -71,7 +75,9 @@ constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
 /**************************************************************************************************
  * Declare a DaisySeed object called hardware
  */
-static DaisySeed       hardware;
+static DaisySeed hardware;
+static Switch    shiftSwitch;
+
 static Oscillator      osc, subOsc, lfo;
 static LadderFilter    flt;
 static MidiUartHandler midi;
@@ -107,9 +113,12 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 {
   float subOsc_freq, lfo_freq, resonance, osc_out, subOsc_out, filtered_out,
       env_out, volume, slewed_freq, cutoff;
-  bool gate;
+  bool gate, shifted;
 
   ProcessAllControls();
+
+  shiftSwitch.Debounce();
+  shifted = shiftSwitch.Pressed();
 
   // Fill output buffer with samples
   for(size_t i = 0; i < size; i += 2)
@@ -138,6 +147,18 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
         slewed_freq  = mtof(0.0f);
       }
       gate = false;
+    }
+
+    env.SetTime(ADSR_SEG_ATTACK, .005 + params[ATTACK].Process());
+
+    // Hack to see tactile button working, and a chance to hear different slew times.
+    if(shifted)
+    {
+      slew.SetHtime(0.005f + params[RELEASE].Process());
+    }
+    else
+    {
+      env.SetTime(ADSR_SEG_RELEASE, .005 + params[RELEASE].Process());
     }
 
     volume = params[VOLUME].Process();
@@ -201,7 +222,7 @@ int main(void)
   hardware.PrintLine("Starting Twiggsynth...");
 
   InitAnalogControls();
-  InitSwitches();
+  InitDigitalControls(hardware.AudioSampleRate());
 
   hardware.SetAudioBlockSize(4);
 
@@ -340,7 +361,7 @@ void InitSynth(float samplerate)
   env.Init(samplerate);
   env.SetTime(ADSR_SEG_ATTACK, .005);
   env.SetTime(ADSR_SEG_DECAY, .0);
-  env.SetTime(ADSR_SEG_RELEASE, .05);
+  env.SetTime(ADSR_SEG_RELEASE, .005);
   env.SetSustainLevel(1.0);
 
   wf.Init();
@@ -392,9 +413,11 @@ void ProcessDigitalControls()
   // None at the moment.
 }
 
-void InitSwitches()
+void InitDigitalControls(float samplerate)
 {
-  tripleToggle1.Init(TRIPTOGGLE_1_UP_PIN, TRIPTOGGLE_1_DN_PIN);
-
-  tripleToggles[TRIPTOGGLE_1] = &tripleToggle1;
+  shiftSwitch.Init(seed::D26,
+                   samplerate / 48.f,
+                   Switch::Type::TYPE_MOMENTARY,
+                   Switch::Polarity::POLARITY_INVERTED,
+                   GPIO::Pull::PULLUP);
 }
