@@ -31,6 +31,7 @@ using namespace daisy;
 using namespace daisysp;
 
 #define LOG_WRITE_ENABLED 0
+#define FILTER_CUTOFF_MAX 18000.0f
 
 /**************************************************************************************************
  * @brief Analog control definitions
@@ -40,27 +41,38 @@ enum AnalogControlName : unsigned int
   VOLUME,
   LFO_FREQ,
   SUBOSC_FREQ_DETUNE,
+  CUTOFF,
   RESONANCE,
   ATTACK,
   RELEASE,
   PORT,
-  KNOB_6,
   KNOB_9,
   SLIDE_1,
   LAST_CONTROL
 };
 
+Pin KNOB_1_PIN  = seed::D24;
+Pin KNOB_2_PIN  = seed::D23;
+Pin KNOB_3_PIN  = seed::D20;
+Pin KNOB_4_PIN  = seed::D15;
+Pin KNOB_5_PIN  = seed::D16;
+Pin KNOB_6_PIN  = seed::D18;
+Pin KNOB_7_PIN  = seed::D22;
+Pin KNOB_8_PIN  = seed::D21;
+Pin KNOB_9_PIN  = seed::D19;
+Pin SLIDE_1_PIN = seed::D17;
+
 std::vector<AnalogControlDefn> analogControlDefns = {
-    {VOLUME,             seed::D24, 0.0f, 1.0f,  Parameter::LINEAR,      false},
-    {LFO_FREQ,           seed::D22, 0.0f, 20.0f, Parameter::LINEAR,      false},
-    {SUBOSC_FREQ_DETUNE, seed::D21, 0.0f, 26.0f, Parameter::LINEAR,      true },
-    {RESONANCE,          seed::D23, 0.0f, 1.8f,  Parameter::EXPONENTIAL, false},
-    {ATTACK,             seed::D20, 0.0f, 10.f,  Parameter::EXPONENTIAL, false},
-    {RELEASE,            seed::D15, 0.0f, 11.f,  Parameter::EXPONENTIAL, false},
-    {PORT,               seed::D16, 0.0f, 1.0f,  Parameter::LINEAR,      false},
-    {KNOB_6,             seed::D18, 0.0f, 1.0f,  Parameter::LINEAR,      false},
-    {KNOB_9,             seed::D19, 0.0f, 1.0f,  Parameter::LINEAR,      false},
-    {SLIDE_1,            seed::D17, 0.0f, 1.0f,  Parameter::LINEAR,      false}
+    {VOLUME,             KNOB_1_PIN,  0.0f,   1.0f,              Parameter::LINEAR,      false},
+    {LFO_FREQ,           KNOB_7_PIN,  -0.05f, 20.0f,             Parameter::LINEAR,      false},
+    {SUBOSC_FREQ_DETUNE, KNOB_8_PIN,  0.0f,   26.0f,             Parameter::LINEAR,      true },
+    {CUTOFF,             KNOB_2_PIN,  25.0f,  FILTER_CUTOFF_MAX, Parameter::EXPONENTIAL, false},
+    {RESONANCE,          KNOB_3_PIN,  0.0f,   1.8f,              Parameter::EXPONENTIAL, false},
+    {ATTACK,             KNOB_4_PIN,  0.0f,   10.f,              Parameter::EXPONENTIAL, false},
+    {RELEASE,            KNOB_5_PIN,  0.0f,   10.01f,            Parameter::EXPONENTIAL, false},
+    {PORT,               KNOB_6_PIN,  0.0f,   1.0f,              Parameter::LINEAR,      false},
+    {KNOB_9,             KNOB_9_PIN,  0.0f,   1.0f,              Parameter::LINEAR,      false},
+    {SLIDE_1,            SLIDE_1_PIN, 0.0f,   1.0f,              Parameter::LINEAR,      false}
 };
 
 AnalogControl analogControls[LAST_CONTROL];
@@ -108,8 +120,8 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float subOsc_freq, lfo_freq, resonance, osc_out, subOsc_out, filtered_out, env_out, volume,
-      slewed_freq, cutoff;
+  float subOsc_freq, resonance, osc_out, subOsc_out, filtered_out, env_out, volume,
+      slewed_freq;
   float k6_val, k9_val, s1_val;
   bool  gate;
 
@@ -144,7 +156,6 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
       gate = false;
     }
 
-    k6_val = params[KNOB_6].Process();
     k9_val = params[KNOB_9].Process();
     s1_val = params[SLIDE_1].Process();
 
@@ -152,7 +163,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
     env.SetTime(ADSR_SEG_ATTACK, .005 + params[ATTACK].Process());
 
-    /// TODO: If release is 11 (> 10.5?) then set release to std::numeric_limits<float>::max(); */
+    /// TODO: If release is > 10 then set release to std::numeric_limits<float>::max(); */
     env.SetTime(ADSR_SEG_RELEASE, .005 + params[RELEASE].Process());
 
     volume = params[VOLUME].Process();
@@ -175,8 +186,11 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
     subOsc.SetFreq(subOsc_freq);
 
-    lfo_freq = params[LFO_FREQ].Process();
-    lfo.SetFreq(lfo_freq);
+    // Lower range of the parameter drops below 0 to ensure the hardware knob can reach 0.
+    // Before using the value, ensure it is non-negative.
+    lfo.SetFreq(daisysp::fmax(params[LFO_FREQ].Process(), 0.0f));
+    // Roll-off amplitude as LFO frequency approaches 0.
+    lfo.SetAmp(daisysp::fmin(params[LFO_FREQ].Value(), 1.0f));
 
     resonance = params[RESONANCE].Process();
     flt.SetRes(resonance);
@@ -193,9 +207,8 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     subOsc_out = subWf.Process(subOsc.Process());
 
     // Filter the output using an LFO to mod the cutoff frequency.
-    cutoff = 2000.0f;
-    cutoff *= exp2f(lfo.Process() * 2.0f);
-    flt.SetFreq(cutoff);
+    // Note: The triangle wave swings from -1 to 1.574, so we need to scale it to -1 to 1.
+    flt.SetFreq(params[CUTOFF].Process() * (((lfo.Process() + 1.0f) / 1.287f)));
     filtered_out = flt.Process(osc_out + subOsc_out) / 2;
 
     // Channel Pressure / Aftertouch used to add a Tremolo effect.
@@ -370,7 +383,7 @@ void InitSynth(float samplerate)
 
   lfo.Init(samplerate);
   lfo.SetWaveform(lfo.WAVE_POLYBLEP_TRI);
-  lfo.SetFreq(0.1);
+  lfo.SetFreq(0.0f);
   lfo.SetAmp(1.0f);
 
   flt.Init(samplerate);
@@ -414,8 +427,11 @@ void InitAnalogControls()
 
   for(auto defn : analogControlDefns)
   {
-    analogControls[defn.name].Init(
-        hardware.adc.GetPtr(defn.name), hardware.AudioCallbackRate(), defn.flipped);
+    analogControls[defn.name].Init(hardware.adc.GetPtr(defn.name),
+                                   hardware.AudioCallbackRate(),
+                                   defn.flipped,
+                                   false,
+                                   defn.slew_seconds);
   }
 
   // Initialize parameters - they normalize values to a range and curve.

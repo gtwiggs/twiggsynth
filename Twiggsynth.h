@@ -14,6 +14,7 @@ struct AnalogControlDefn
   float             max;
   Parameter::Curve  curve;
   bool              flipped;
+  float             slew_seconds;
 
   // Constructor
   AnalogControlDefn(AnalogControlName name,
@@ -21,8 +22,15 @@ struct AnalogControlDefn
                     float             min,
                     float             max,
                     Parameter::Curve  curve,
-                    bool              flipped = false)
-  : name(name), pin(pin), min(min), max(max), curve(curve), flipped(flipped)
+                    bool              flipped,
+                    float             slew_seconds = 0.0f)
+  : name(name),
+    pin(pin),
+    min(min),
+    max(max),
+    curve(curve),
+    flipped(flipped),
+    slew_seconds(slew_seconds)
   {
   }
 };
