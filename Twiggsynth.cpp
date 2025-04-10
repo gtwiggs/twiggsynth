@@ -43,40 +43,38 @@ enum AnalogControlName : unsigned int
   RESONANCE,
   ATTACK,
   RELEASE,
+  PORT,
+  KNOB_6,
+  KNOB_9,
+  SLIDE_1,
   LAST_CONTROL
 };
 
 std::vector<AnalogControlDefn> analogControlDefns = {
-    {VOLUME,             seed::D15, 0.0f, 1.0f,  Parameter::LINEAR,      false},
-    {LFO_FREQ,           seed::D16, 0.0f, 20.0f, Parameter::LINEAR,      false},
-    {SUBOSC_FREQ_DETUNE, seed::D17, 0.0f, 26.0f, Parameter::LINEAR,      true },
-    {RESONANCE,          seed::D18, 0.0f, 1.8f,  Parameter::EXPONENTIAL, false},
-    {ATTACK,             seed::D19, 0.0f, 10.f,  Parameter::EXPONENTIAL, false},
-    {RELEASE,            seed::D20, 0.0f, 10.f,  Parameter::EXPONENTIAL, false}
+    {VOLUME,             seed::D24, 0.0f, 1.0f,  Parameter::LINEAR,      false},
+    {LFO_FREQ,           seed::D22, 0.0f, 20.0f, Parameter::LINEAR,      false},
+    {SUBOSC_FREQ_DETUNE, seed::D21, 0.0f, 26.0f, Parameter::LINEAR,      true },
+    {RESONANCE,          seed::D23, 0.0f, 1.8f,  Parameter::EXPONENTIAL, false},
+    {ATTACK,             seed::D20, 0.0f, 10.f,  Parameter::EXPONENTIAL, false},
+    {RELEASE,            seed::D15, 0.0f, 11.f,  Parameter::EXPONENTIAL, false},
+    {PORT,               seed::D16, 0.0f, 1.0f,  Parameter::LINEAR,      false},
+    {KNOB_6,             seed::D18, 0.0f, 1.0f,  Parameter::LINEAR,      false},
+    {KNOB_9,             seed::D19, 0.0f, 1.0f,  Parameter::LINEAR,      false},
+    {SLIDE_1,            seed::D17, 0.0f, 1.0f,  Parameter::LINEAR,      false}
 };
 
 AnalogControl analogControls[LAST_CONTROL];
 Parameter     params[LAST_CONTROL];
 
 /**************************************************************************************************
- * @brief Digital control definitions
- */
-enum TripleToggle
-{
-  TRIPTOGGLE_1,
-  TRIPTOGGLE_LAST
-};
-
-Switch3 tripleToggle1, *tripleToggles[TRIPTOGGLE_LAST];
-
-constexpr Pin TRIPTOGGLE_1_UP_PIN = seed::D14;
-constexpr Pin TRIPTOGGLE_1_DN_PIN = seed::D13;
-
-/**************************************************************************************************
  * Declare a DaisySeed object called hardware
  */
 static DaisySeed hardware;
-static Switch    shiftSwitch;
+
+/**************************************************************************************************
+ * Define MIDI note constants
+ */
+constexpr float MIDI_NOTE_C3 = 60.0f;
 
 static Oscillator      osc, subOsc, lfo;
 static LadderFilter    flt;
@@ -85,16 +83,15 @@ static TsPort          slew;
 static Adsr            env;
 static Wavefolder      wf;
 static Wavefolder      subWf;
+static Tremolo         tremolo;
 static Limiter         limiter;
 static float           playing_note           = 0.0f;
 static float           pitch_bend_as_semitone = 0.0f;
 static float           mod_wheel              = 0.0f;
+static float           channel_pressure       = 0.0f;
 
 /**
  * @brief List of currently pressed notes
- *
- * "Except for the more recent dual core MCUs, most STM32 are limited to running only one thing at a time"
- * No guards against modify-during-read. Good thing as _mutex_ isn't available to the compiler!
  */
 static std::list<float> noteOnList;
 
@@ -111,14 +108,12 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float subOsc_freq, lfo_freq, resonance, osc_out, subOsc_out, filtered_out,
-      env_out, volume, slewed_freq, cutoff;
-  bool gate, shifted;
+  float subOsc_freq, lfo_freq, resonance, osc_out, subOsc_out, filtered_out, env_out, volume,
+      slewed_freq, cutoff;
+  float k6_val, k9_val, s1_val;
+  bool  gate;
 
   ProcessAllControls();
-
-  shiftSwitch.Debounce();
-  shifted = shiftSwitch.Pressed();
 
   // Fill output buffer with samples
   for(size_t i = 0; i < size; i += 2)
@@ -149,17 +144,16 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
       gate = false;
     }
 
+    k6_val = params[KNOB_6].Process();
+    k9_val = params[KNOB_9].Process();
+    s1_val = params[SLIDE_1].Process();
+
+    slew.SetHtime(params[PORT].Process());
+
     env.SetTime(ADSR_SEG_ATTACK, .005 + params[ATTACK].Process());
 
-    // Hack to see tactile button working, and a chance to hear different slew times.
-    if(shifted)
-    {
-      slew.SetHtime(0.005f + params[RELEASE].Process());
-    }
-    else
-    {
-      env.SetTime(ADSR_SEG_RELEASE, .005 + params[RELEASE].Process());
-    }
+    /// TODO: If release is 11 (> 10.5?) then set release to std::numeric_limits<float>::max(); */
+    env.SetTime(ADSR_SEG_RELEASE, .005 + params[RELEASE].Process());
 
     volume = params[VOLUME].Process();
 
@@ -172,14 +166,12 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
 
     // Convert the slewed freq back to midi to calc the subosc freq.
     // invert the mtof calc: powf(2, (m - 69.0f) / 12.0f) * 440.0f;
-    // TODO: replace with more efficient mechanism.
-    float slew_midi
-        = (std::log((slewed_freq / 440.0f)) / std::log(2) * 12) + 69.0f;
-    // The detune control range is 0-26, so I reduce by 1 and clamp to 0-24 to ensure coverage at the intended limits.
-    subOsc_freq
-        = mtof(slew_midi
-               - daisysp::fclamp(
-                   params[SUBOSC_FREQ_DETUNE].Process() - 1.f, 0.0f, 24.0f));
+    /// TODO: replace with more efficient mechanism.
+    float slew_midi = (std::log((slewed_freq / 440.0f)) / std::log(2.0f) * 12) + 69.0f;
+    // The detune control range is 0-26, so I reduce by 1 and clamp to 0-24 to ensure coverage at
+    // the intended limits.
+    subOsc_freq = mtof(slew_midi
+                       - daisysp::fclamp(params[SUBOSC_FREQ_DETUNE].Process() - 1.f, 0.0f, 24.0f));
 
     subOsc.SetFreq(subOsc_freq);
 
@@ -189,9 +181,10 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     resonance = params[RESONANCE].Process();
     flt.SetRes(resonance);
 
-    // Use the mod wheel to get a value for the wavefolder gain.
-    // Adapted from https://github.com/electro-smith/DaisySP/pull/175
-    auto mod = (mod_wheel / 127.0f);
+    // Use the mod wheel to get a value for the wavefolder gain. Value has an _exponential curve_
+    // applied to it (the sweet spot is in the bottom half of the range). Adapted from
+    // https://github.com/electro-smith/DaisySP/pull/175
+    auto mod = (mod_wheel * mod_wheel);
 
     wf.SetGain(0.5f + mod * 19.5f);
     subWf.SetGain(0.5f + mod * 19.5f);
@@ -204,6 +197,21 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     cutoff *= exp2f(lfo.Process() * 2.0f);
     flt.SetFreq(cutoff);
     filtered_out = flt.Process(osc_out + subOsc_out) / 2;
+
+    // Channel Pressure / Aftertouch used to add a Tremolo effect.
+    // From https://christianfloisand.wordpress.com/2012/04/18/coding-some-tremolo/ :
+    //    While LFOs are normally between 0 – 20 Hz, a cap of 10 Hz works well for tremolo. The
+    //    other specification we need is depth — the amount of modulation the LFO will apply on to
+    //    the original signal — specified in percent.  A modulation depth of 100%, for example, will
+    //    alternate between full signal strength to complete suppression of the signal at the
+    //    frequency rate of the LFO.  For a more subtle effect, a depth of around 30% or so will
+    //    result in a much smoother amplitude variance of the signal.
+    if(channel_pressure > 0.0f)
+    {
+      // apply a logarithmic curve to value.
+      tremolo.SetFreq(expf(channel_pressure / 127.0f * logf(10.0f)));
+      filtered_out = tremolo.Process(filtered_out);
+    }
 
     // Set the left and right outputs
 
@@ -236,6 +244,9 @@ int main(void)
 
   hardware.StartAudio(AudioCallback);
 
+  // Push a midle C on the front of the stack for testing.
+  noteOnList.push_front(MIDI_NOTE_C3);
+
   ProcessMidi();
 }
 
@@ -263,6 +274,7 @@ void ProcessMidi()
           auto note_msg = msg.AsNoteOn();
           if(note_msg.velocity != 0)
           {
+            /// TODO: capture velocity in note list.
             noteOnList.push_front(note_msg.note);
           }
         }
@@ -276,8 +288,16 @@ void ProcessMidi()
         case PitchBend:
         {
           auto bend_msg = msg.AsPitchBend();
-          // Normalize pitch bend to 12 semitones. Provides a pitch bend range of 1 octave up and down.
-          pitch_bend_as_semitone = (bend_msg.value / 8192.0f) * 12.0f;
+          // Normalize pitch bend to 12 semitones. Provides a pitch bend range of 1 octave up and
+          // down. An exponential curve is applied.
+          float v                = (bend_msg.value / 8192.0f);
+          pitch_bend_as_semitone = (v * abs(v)) * 12.0f;
+        }
+        break;
+        case ChannelPressure:
+        {
+          auto pressure_msg = msg.AsChannelPressure();
+          channel_pressure  = pressure_msg.pressure;
         }
         break;
         case ControlChange:
@@ -286,8 +306,8 @@ void ProcessMidi()
           switch(cc_msg.control_number)
           {
             case 1: // Modulation Wheel
-              // Preserve raw value for consumer to eval as desired: 0-127.0f
-              mod_wheel = cc_msg.value;
+              // Set to a value from 0-1.
+              mod_wheel = cc_msg.value / 127.0f;
               break;
             default: break;
           }
@@ -356,6 +376,7 @@ void InitSynth(float samplerate)
   flt.Init(samplerate);
   flt.SetRes(0.5);
   flt.SetInputDrive(1.0f);
+  // FWIW, LP24 is a smoother filter.
   flt.SetFilterMode(LadderFilter::FilterMode::LP12);
 
   env.Init(samplerate);
@@ -363,6 +384,11 @@ void InitSynth(float samplerate)
   env.SetTime(ADSR_SEG_DECAY, .0);
   env.SetTime(ADSR_SEG_RELEASE, .005);
   env.SetSustainLevel(1.0);
+
+  tremolo.Init(samplerate);
+  tremolo.SetFreq(0.0f);
+  tremolo.SetDepth(0.3f);
+  tremolo.SetWaveform(Oscillator::WAVE_SIN);
 
   wf.Init();
   subWf.Init();
@@ -388,17 +414,15 @@ void InitAnalogControls()
 
   for(auto defn : analogControlDefns)
   {
-    analogControls[defn.name].Init(hardware.adc.GetPtr(defn.name),
-                                   hardware.AudioCallbackRate(),
-                                   defn.flipped);
+    analogControls[defn.name].Init(
+        hardware.adc.GetPtr(defn.name), hardware.AudioCallbackRate(), defn.flipped);
   }
 
   // Initialize parameters - they normalize values to a range and curve.
 
   for(auto defn : analogControlDefns)
   {
-    params[defn.name].Init(
-        analogControls[defn.name], defn.min, defn.max, defn.curve);
+    params[defn.name].Init(analogControls[defn.name], defn.min, defn.max, defn.curve);
   }
 }
 
@@ -415,9 +439,5 @@ void ProcessDigitalControls()
 
 void InitDigitalControls(float samplerate)
 {
-  shiftSwitch.Init(seed::D26,
-                   samplerate / 48.f,
-                   Switch::Type::TYPE_MOMENTARY,
-                   Switch::Polarity::POLARITY_INVERTED,
-                   GPIO::Pull::PULLUP);
+  // None at the moment.
 }
