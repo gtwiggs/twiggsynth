@@ -1,5 +1,5 @@
 {
-  "electrosmithFolder": "${workspaceFolder}/../electro-smith",
+  "electrosmithFolder": "/Users/glenntwiggs/Projects/daisy-seed/electro-smith",
   "files.associations": {
     "iostream": "cpp",
     "cmath": "cpp",

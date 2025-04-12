@@ -67,7 +67,7 @@ std::vector<AnalogControlDefn> analogControlDefns = {
     {SUBOSC_FREQ_DETUNE, KNOB_8_PIN,  0.0f,   26.0f,    Parameter::LINEAR,      true },
     {CUTOFF,             KNOB_2_PIN,  25.0f,  12000.0f, Parameter::EXPONENTIAL, false},
     {RESONANCE,          KNOB_3_PIN,  0.0f,   1.8f,     Parameter::EXPONENTIAL, false},
-    {ATTACK,             KNOB_4_PIN,  0.0f,   10.f,     Parameter::EXPONENTIAL, false},
+    {ATTACK,             KNOB_4_PIN,  0.0f,   5.f,      Parameter::EXPONENTIAL, false},
     {RELEASE,            KNOB_5_PIN,  0.0f,   10.01f,   Parameter::EXPONENTIAL, false},
     {PORT,               KNOB_6_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
     {KNOB_9,             KNOB_9_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
@@ -217,12 +217,9 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     //    alternate between full signal strength to complete suppression of the signal at the
     //    frequency rate of the LFO.  For a more subtle effect, a depth of around 30% or so will
     //    result in a much smoother amplitude variance of the signal.
-    if(channel_pressure > 0.0f)
-    {
-      // apply a logarithmic curve to value.
-      tremolo.SetFreq(expf(channel_pressure / 127.0f * logf(10.0f)));
-      filtered_out = tremolo.Process(filtered_out);
-    }
+
+    tremolo.SetFreq(channel_pressure / 127.0f * 10.0f);
+    filtered_out = tremolo.Process(filtered_out);
 
     // Set the left and right outputs
 
@@ -398,8 +395,8 @@ void InitSynth(float samplerate)
 
   tremolo.Init(samplerate);
   tremolo.SetFreq(0.0f);
-  tremolo.SetDepth(0.3f);
-  tremolo.SetWaveform(Oscillator::WAVE_SIN);
+  tremolo.SetDepth(0.5f);
+  tremolo.SetWaveform(Oscillator::WAVE_POLYBLEP_TRI);
 
   wf.Init();
   subWf.Init();
