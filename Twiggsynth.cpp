@@ -31,7 +31,6 @@ using namespace daisy;
 using namespace daisysp;
 
 #define LOG_WRITE_ENABLED 0
-#define FILTER_CUTOFF_MAX 18000.0f
 
 /**************************************************************************************************
  * @brief Analog control definitions
@@ -63,16 +62,16 @@ Pin KNOB_9_PIN  = seed::D19;
 Pin SLIDE_1_PIN = seed::D17;
 
 std::vector<AnalogControlDefn> analogControlDefns = {
-    {VOLUME,             KNOB_1_PIN,  0.0f,   1.0f,              Parameter::LINEAR,      false},
-    {LFO_FREQ,           KNOB_7_PIN,  -0.05f, 20.0f,             Parameter::LINEAR,      false},
-    {SUBOSC_FREQ_DETUNE, KNOB_8_PIN,  0.0f,   26.0f,             Parameter::LINEAR,      true },
-    {CUTOFF,             KNOB_2_PIN,  25.0f,  FILTER_CUTOFF_MAX, Parameter::EXPONENTIAL, false},
-    {RESONANCE,          KNOB_3_PIN,  0.0f,   1.8f,              Parameter::EXPONENTIAL, false},
-    {ATTACK,             KNOB_4_PIN,  0.0f,   10.f,              Parameter::EXPONENTIAL, false},
-    {RELEASE,            KNOB_5_PIN,  0.0f,   10.01f,            Parameter::EXPONENTIAL, false},
-    {PORT,               KNOB_6_PIN,  0.0f,   1.0f,              Parameter::LINEAR,      false},
-    {KNOB_9,             KNOB_9_PIN,  0.0f,   1.0f,              Parameter::LINEAR,      false},
-    {SLIDE_1,            SLIDE_1_PIN, 0.0f,   1.0f,              Parameter::LINEAR,      false}
+    {VOLUME,             KNOB_1_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
+    {LFO_FREQ,           KNOB_7_PIN,  -0.05f, 20.0f,    Parameter::LINEAR,      false},
+    {SUBOSC_FREQ_DETUNE, KNOB_8_PIN,  0.0f,   26.0f,    Parameter::LINEAR,      true },
+    {CUTOFF,             KNOB_2_PIN,  25.0f,  12000.0f, Parameter::EXPONENTIAL, false},
+    {RESONANCE,          KNOB_3_PIN,  0.0f,   1.8f,     Parameter::EXPONENTIAL, false},
+    {ATTACK,             KNOB_4_PIN,  0.0f,   10.f,     Parameter::EXPONENTIAL, false},
+    {RELEASE,            KNOB_5_PIN,  0.0f,   10.01f,   Parameter::EXPONENTIAL, false},
+    {PORT,               KNOB_6_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
+    {KNOB_9,             KNOB_9_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
+    {SLIDE_1,            SLIDE_1_PIN, 0.0f,   1.0f,     Parameter::LINEAR,      false}
 };
 
 AnalogControl analogControls[LAST_CONTROL];
@@ -120,8 +119,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float subOsc_freq, resonance, osc_out, subOsc_out, filtered_out, env_out, volume,
-      slewed_freq;
+  float subOsc_freq, resonance, osc_out, subOsc_out, filtered_out, env_out, volume, slewed_freq;
   float k6_val, k9_val, s1_val;
   bool  gate;
 
@@ -206,9 +204,9 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     osc_out    = wf.Process(osc.Process());
     subOsc_out = subWf.Process(subOsc.Process());
 
-    // Filter the output using an LFO to mod the cutoff frequency.
-    // Note: The triangle wave swings from -1 to 1.574, so we need to scale it to -1 to 1.
-    flt.SetFreq(params[CUTOFF].Process() * (((lfo.Process() + 1.0f) / 1.287f)));
+    // Lowpass Filter on output using an LFO to mod the cutoff frequency.
+    flt.SetFreq(params[CUTOFF].Process() * exp2f(lfo.Process() * 2.0f));
+
     filtered_out = flt.Process(osc_out + subOsc_out) / 2;
 
     // Channel Pressure / Aftertouch used to add a Tremolo effect.
