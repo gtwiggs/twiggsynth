@@ -64,7 +64,7 @@ Pin SLIDE_1_PIN = seed::D17;
 std::vector<AnalogControlDefn> analogControlDefns = {
     {VOLUME,             KNOB_1_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
     {LFO_FREQ,           KNOB_7_PIN,  -0.05f, 20.0f,    Parameter::LINEAR,      false},
-    {SUBOSC_FREQ_DETUNE, KNOB_8_PIN,  0.0f,   26.0f,    Parameter::LINEAR,      true },
+    {SUBOSC_FREQ_DETUNE, KNOB_8_PIN,  -0.02f, 1.02f,    Parameter::LINEAR,      true },
     {CUTOFF,             KNOB_2_PIN,  25.0f,  12000.0f, Parameter::EXPONENTIAL, false},
     {RESONANCE,          KNOB_3_PIN,  0.0f,   1.8f,     Parameter::EXPONENTIAL, false},
     {ATTACK,             KNOB_4_PIN,  0.0f,   5.f,      Parameter::EXPONENTIAL, false},
@@ -119,8 +119,8 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float subOsc_freq, resonance, osc_out, subOsc_out, filtered_out, env_out, volume, slewed_freq;
-  float k6_val, k9_val, s1_val;
+  float resonance, osc_out, subOsc_out, filtered_out, env_out, volume, slewed_freq;
+  float k9_val, s1_val;
   bool  gate;
 
   ProcessAllControls();
@@ -172,17 +172,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     subOsc.SetAmp(env_out);
 
     osc.SetFreq(slewed_freq);
-
-    // Convert the slewed freq back to midi to calc the subosc freq.
-    // invert the mtof calc: powf(2, (m - 69.0f) / 12.0f) * 440.0f;
-    /// TODO: replace with more efficient mechanism.
-    float slew_midi = (std::log((slewed_freq / 440.0f)) / std::log(2.0f) * 12) + 69.0f;
-    // The detune control range is 0-26, so I reduce by 1 and clamp to 0-24 to ensure coverage at
-    // the intended limits.
-    subOsc_freq = mtof(slew_midi
-                       - daisysp::fclamp(params[SUBOSC_FREQ_DETUNE].Process() - 1.f, 0.0f, 24.0f));
-
-    subOsc.SetFreq(subOsc_freq);
+    subOsc.SetFreq(slewed_freq / PitchMultiplier(params[SUBOSC_FREQ_DETUNE].Process(), 24.0f));
 
     // Lower range of the parameter drops below 0 to ensure the hardware knob can reach 0.
     // Before using the value, ensure it is non-negative.
@@ -451,4 +441,10 @@ void ProcessDigitalControls()
 void InitDigitalControls(float samplerate)
 {
   // None at the moment.
+}
+
+float PitchMultiplier(float offset, int semitoneRange)
+{
+  // semitoneRange / 12 gives the number of octaves
+  return powf(2.0f, daisysp::fclamp(offset, 0.0f, 1.0f) * (semitoneRange / 12.0f));
 }

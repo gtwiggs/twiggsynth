@@ -35,6 +35,12 @@ struct AnalogControlDefn
   }
 };
 
+/**
+ * PitchMultiplier returns a frequency multiplier based on an offset and a range in semitones.
+ * The offset is a value between 0 and 1.
+ */
+float PitchMultiplier(float offset, int semitoneRange);
+
 void InitMidi();
 void InitSynth(float samplerate);
 void InitAnalogControls();
