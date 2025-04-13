@@ -43,9 +43,9 @@ enum AnalogControlName : unsigned int
   CUTOFF,
   RESONANCE,
   ATTACK,
+  SUSTAIN,
   RELEASE,
   PORT,
-  KNOB_9,
   SLIDE_1,
   LAST_CONTROL
 };
@@ -68,9 +68,9 @@ std::vector<AnalogControlDefn> analogControlDefns = {
     {CUTOFF,             KNOB_2_PIN,  25.0f,  12000.0f, Parameter::EXPONENTIAL, false},
     {RESONANCE,          KNOB_3_PIN,  0.0f,   1.8f,     Parameter::EXPONENTIAL, false},
     {ATTACK,             KNOB_4_PIN,  0.0f,   5.f,      Parameter::EXPONENTIAL, false},
-    {RELEASE,            KNOB_5_PIN,  0.0f,   10.01f,   Parameter::EXPONENTIAL, false},
-    {PORT,               KNOB_6_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
-    {KNOB_9,             KNOB_9_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
+    {SUSTAIN,            KNOB_5_PIN,  0.0f,   1.f,      Parameter::LINEAR,      false},
+    {RELEASE,            KNOB_6_PIN,  0.0f,   10.7f,    Parameter::EXPONENTIAL, false},
+    {PORT,               KNOB_9_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
     {SLIDE_1,            SLIDE_1_PIN, 0.0f,   1.0f,     Parameter::LINEAR,      false}
 };
 
@@ -114,13 +114,12 @@ static float DEFAULT_SLEW_TIME = 0.03f;
 /** FIFO to hold messages as we're ready to print them */
 FIFO<MidiEvent, 128> event_log;
 
-// TODO: slew/glide between notes.
 void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
   float resonance, osc_out, subOsc_out, filtered_out, env_out, volume, slewed_freq;
-  float k9_val, s1_val;
+  float s1_val;
   bool  gate;
 
   ProcessAllControls();
@@ -154,15 +153,16 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
       gate = false;
     }
 
-    k9_val = params[KNOB_9].Process();
     s1_val = params[SLIDE_1].Process();
 
     slew.SetHtime(params[PORT].Process());
 
     env.SetTime(ADSR_SEG_ATTACK, .005 + params[ATTACK].Process());
 
-    /// TODO: If release is > 10 then set release to std::numeric_limits<float>::max(); */
-    env.SetTime(ADSR_SEG_RELEASE, .005 + params[RELEASE].Process());
+    env.SetSustainLevel(1.0f - params[SUSTAIN].Process());
+
+    env.SetTime(ADSR_SEG_RELEASE,
+                params[RELEASE].Process() <= 10.0f ? .005 + params[RELEASE].Value() : 100000000.0f);
 
     volume = params[VOLUME].Process();
 
