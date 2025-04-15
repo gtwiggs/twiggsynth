@@ -46,7 +46,7 @@ enum AnalogControlName : unsigned int
   SUSTAIN,
   RELEASE,
   PORT,
-  SLIDE_1,
+  WAVE_PICKER,
   LAST_CONTROL
 };
 
@@ -71,7 +71,7 @@ std::vector<AnalogControlDefn> analogControlDefns = {
     {SUSTAIN,            KNOB_5_PIN,  0.0f,   1.f,      Parameter::LINEAR,      false},
     {RELEASE,            KNOB_6_PIN,  0.0f,   10.7f,    Parameter::EXPONENTIAL, false},
     {PORT,               KNOB_9_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
-    {SLIDE_1,            SLIDE_1_PIN, 0.0f,   1.0f,     Parameter::LINEAR,      false}
+    {WAVE_PICKER,        SLIDE_1_PIN, 0.0f,   1.0f,     Parameter::LINEAR,      false}
 };
 
 AnalogControl analogControls[LAST_CONTROL];
@@ -106,6 +106,11 @@ static float           channel_pressure       = 0.0f;
  */
 static std::list<float> noteOnList;
 
+// Indexed waveforms for the wavepicker to choose.
+int wavePickerWaveform[] = {Oscillator::WAVE_POLYBLEP_SAW,
+                            Oscillator::WAVE_POLYBLEP_SQUARE,
+                            Oscillator::WAVE_POLYBLEP_TRI};
+
 /**
  * Slew time.
  */
@@ -119,7 +124,6 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    size_t                                size)
 {
   float resonance, osc_out, subOsc_out, filtered_out, env_out, volume, slewed_freq;
-  float s1_val;
   bool  gate;
 
   ProcessAllControls();
@@ -153,7 +157,12 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
       gate = false;
     }
 
-    s1_val = params[SLIDE_1].Process();
+    // Set the waveform of the oscillators based on the wave picker value.
+    // The wave picker is a 0-8 value that selects the waveform for the main and sub oscillators.
+    // The float value from the knob is truncated to an int (towards 0) using the cast operator.
+    int wavePicker = MapControlToRange(params[WAVE_PICKER].Process(), 0, 8);
+    osc.SetWaveform(wavePickerWaveform[wavePicker % 3]);
+    subOsc.SetWaveform(wavePickerWaveform[static_cast<int>(wavePicker / 3)]);
 
     slew.SetHtime(params[PORT].Process());
 
@@ -447,4 +456,14 @@ float PitchMultiplier(float offset, int semitoneRange)
 {
   // semitoneRange / 12 gives the number of octaves
   return powf(2.0f, daisysp::fclamp(offset, 0.0f, 1.0f) * (semitoneRange / 12.0f));
+}
+
+int MapControlToRange(float val, int minInt, int maxInt)
+{
+    // Clamp input to 0.0–1.0 just in case
+    val = fclamp(val, 0.0f, 1.0f);
+
+    // Compute range and map
+    int range = maxInt - minInt + 1;
+    return minInt + static_cast<int>(val * range);
 }

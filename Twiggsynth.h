@@ -41,6 +41,15 @@ struct AnalogControlDefn
  */
 float PitchMultiplier(float offset, int semitoneRange);
 
+/**
+ * @brief Map a float value to an int range.
+ * @param val The float value to map. Must be in the range 0.0 to 1.0 inclusive.
+ * @param minInt The minimum int value.
+ * @param maxInt The maximum int value.
+ * @return The mapped int value.
+ */
+int MapControlToRange(float val, int minInt, int maxInt);
+
 void InitMidi();
 void InitSynth(float samplerate);
 void InitAnalogControls();
