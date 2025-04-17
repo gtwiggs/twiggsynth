@@ -64,11 +64,11 @@ Pin SLIDE_1_PIN = seed::D17;
 std::vector<AnalogControlDefn> analogControlDefns = {
     {VOLUME,             KNOB_1_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
     {LFO_FREQ,           KNOB_7_PIN,  -0.05f, 20.0f,    Parameter::LINEAR,      false},
-    {SUBOSC_FREQ_DETUNE, KNOB_8_PIN,  -0.02f, 1.02f,    Parameter::LINEAR,      true },
+    {SUBOSC_FREQ_DETUNE, KNOB_8_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      true },
     {CUTOFF,             KNOB_2_PIN,  25.0f,  12000.0f, Parameter::EXPONENTIAL, false},
     {RESONANCE,          KNOB_3_PIN,  0.0f,   1.8f,     Parameter::EXPONENTIAL, false},
     {ATTACK,             KNOB_4_PIN,  0.0f,   5.f,      Parameter::EXPONENTIAL, false},
-    {SUSTAIN,            KNOB_5_PIN,  0.0f,   1.f,      Parameter::LINEAR,      false},
+    {SUSTAIN,            KNOB_5_PIN,  0.0f,   1.f,      Parameter::LINEAR,      true },
     {RELEASE,            KNOB_6_PIN,  0.0f,   10.7f,    Parameter::EXPONENTIAL, false},
     {PORT,               KNOB_9_PIN,  0.0f,   1.0f,     Parameter::LINEAR,      false},
     {WAVE_PICKER,        SLIDE_1_PIN, 0.0f,   1.0f,     Parameter::LINEAR,      false}
@@ -92,8 +92,7 @@ static LadderFilter    flt;
 static MidiUartHandler midi;
 static TsPort          slew;
 static Adsr            env;
-static Wavefolder      wf;
-static Wavefolder      subWf;
+static Wavefolder      wf, subWf;
 static Tremolo         tremolo;
 static Limiter         limiter;
 static float           playing_note           = 0.0f;
@@ -123,7 +122,7 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
                    AudioHandle::InterleavingOutputBuffer out,
                    size_t                                size)
 {
-  float resonance, osc_out, subOsc_out, filtered_out, env_out, volume, slewed_freq;
+  float resonance, filtered_out, env_out, volume, slewed_freq, wavefolderGain;
   bool  gate;
 
   ProcessAllControls();
@@ -178,10 +177,11 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     env_out = env.Process(gate);
 
     osc.SetAmp(env_out);
-    subOsc.SetAmp(env_out);
-
     osc.SetFreq(slewed_freq);
-    subOsc.SetFreq(slewed_freq / PitchMultiplier(params[SUBOSC_FREQ_DETUNE].Process(), 24.0f));
+
+    subOsc.SetAmp(env_out);
+    // 16 step frequency divider.
+    subOsc.SetFreq(slewed_freq / MapControlToRange(params[SUBOSC_FREQ_DETUNE].Process(), 1, 16));
 
     // Lower range of the parameter drops below 0 to ensure the hardware knob can reach 0.
     // Before using the value, ensure it is non-negative.
@@ -197,16 +197,14 @@ void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
     // https://github.com/electro-smith/DaisySP/pull/175
     auto mod = (mod_wheel * mod_wheel);
 
-    wf.SetGain(0.5f + mod * 19.5f);
-    subWf.SetGain(0.5f + mod * 19.5f);
-
-    osc_out    = wf.Process(osc.Process());
-    subOsc_out = subWf.Process(subOsc.Process());
+    wavefolderGain = 0.5f + mod * 19.5f;
+    wf.SetGain(wavefolderGain);
+    subWf.SetGain(wavefolderGain);
 
     // Lowpass Filter on output using an LFO to mod the cutoff frequency.
     flt.SetFreq(params[CUTOFF].Process() * exp2f(lfo.Process() * 2.0f));
 
-    filtered_out = flt.Process(osc_out + subOsc_out) / 2;
+    filtered_out = flt.Process(wf.Process(osc.Process()) + subWf.Process(subOsc.Process())) / 2.0f;
 
     // Channel Pressure / Aftertouch used to add a Tremolo effect.
     // From https://christianfloisand.wordpress.com/2012/04/18/coding-some-tremolo/ :
@@ -252,6 +250,8 @@ int main(void)
   hardware.StartAudio(AudioCallback);
 
   // Push a midle C on the front of the stack for testing.
+  /// TODO: If no MIDI connection, allow the wave picker to change freq of main osc?
+  ///       Allow the instrument to be used w/o external input.
   noteOnList.push_front(MIDI_NOTE_C3);
 
   ProcessMidi();
@@ -460,10 +460,10 @@ float PitchMultiplier(float offset, int semitoneRange)
 
 int MapControlToRange(float val, int minInt, int maxInt)
 {
-    // Clamp input to 0.0–1.0 just in case
-    val = fclamp(val, 0.0f, 1.0f);
+  // Clamp input to 0.0–1.0 just in case
+  val = fclamp(val, 0.0f, 1.0f);
 
-    // Compute range and map
-    int range = maxInt - minInt + 1;
-    return minInt + static_cast<int>(val * range);
+  // Compute range and map
+  int range = maxInt - minInt + 1;
+  return minInt + static_cast<int>(val * range);
 }
