@@ -1,39 +1,71 @@
-# Twiggsynth
+# Twigg*synth*
 
 ## Author
 
-Gtwiggs
+@Gtwiggs
 
 ## Description
 
-A digital synthesis musical instrument.
-
-_Twigg**synth**_ is a learning platform for _so many things_. Some loose goals:
-
-- Organizing code to make the addition/removal and declaration of on-board components easy.
-- Software-based routing between instrument components based on panel input.
-- Self-playing, maybe with seed note(s).
-- Monophonic, perhaps paraphonic.
+A learning platform for music synthesis using a Daisy Seed.
 
 ## State Of Play
 
-**_2/5/2024_**
+**_4/15/2025_**
 
-- Monophonic synthesis.
-  - Suboscillator tied to main oscillator.
-  - New notes replace prior notes.
-  - If a note is held, it will resume playing after later notes are released.
-  - Portamento for held notes. Resets when no notes are active. Fixed at 0.05s.
-- Note input via USB MIDI on the builtin connector.
-  - Listens on all channels.
-- Leftmost Knob controls the sub-oscillator detune.
-  - It ranges from no detune (fully clockwise) to -2 octaves (fully counterclockwise).
-- Center knob controls LFO Rate
-  - LFO modulates the Moog Ladder filter cutoff.
-  - Filter resonance is fixed (at 0.7)
-- Rightmost knob controls volume.
-- 3-position toggle switch chooses the subosc contribution:
-  - UP: subosc is a Sawtooth waveform.
-  - CENTER: subosc is a Sine waveform.
-  - DOWN: subosc is disabled.
-- Mini jack is L/Mono line level out.
+-   2 Oscillator Monophonic synthesizer.
+    -   Oscillator and suboscillator waveform: sawtooth.
+    -   Suboscillator frequency referenced to main oscillator.
+    -   Latest note priority.
+    -   If a note is held, it will resume playing after later notes are released.
+    -   Portamento across entire range. Resets when no notes are active. Fixed glide time of 0.05s.
+-   Mono output.
+-   LFO Mod source; waveform: triangle.
+-   Ladder Filter.
+    -   Low Pass 2 pole filter.
+-   Tremolo accessed via MIDI channel pressure. 50% wet/dry, Triangle waveform.
+-   ADSR envelope.
+    -   Attack 0s - 5s.
+    -   Decay not settable.
+    -   Sustain level 1 - 0.
+    -   Release 0s - note hold.
+-   Slider to select waveforms.
+    -   Sets toe waveforms for the main and sub oscillators.
+    -   The slider provides access t all 9 combinations of Sawtooth, Square and Triangle waveforms.
+-   MIDI Support:
+    -   UART MIDI ~ 5 pin DIN connectors. _IN_ and _OUT_ connectors are provided, but only _IN_ is implemented.
+    -   Note on/off.
+    -   Pitch bend +/- 1 octave.
+    -   Channel Pressure modulates Tremolo
+    -   Listens on all channels.
+
+## Hardware Controls
+
+| Label | Pin | Function                                                  |
+| :---: | :-: | --------------------------------------------------------- |
+|  k1   | D24 | Volume                                                    |
+|  k2   | D23 | Flter cutoff.                                             |
+|  k3   | D20 | Flter resonance.                                          |
+|  k4   | D15 | Attack time.                                              |
+|  k5   | D16 | Sustain level.                                            |
+|  k6   | D18 | Release time.                                             |
+|  k7   | D22 | LFO frequency: modulates the filter cutoff. Disabled @ 0. |
+|  k8   | D21 | Sub-oscillator detune: 0 to -2 octaves.                   |
+|  k9   | D19 | Portamento time.                                          |
+|  s1   | D17 | Waveform Picker for main and sub oscillators.             |
+|  led  |     | Power indicator                                           |
+
+```
++----------------------+
+|  k1         led      |
+|        k2            |
+|              k3      |
+|   k7                 |
+|                 k4   |
+|         k8           |
+|                 k5   |
+|                      |
+|             k6    /  |
+|     k9          s1   |
+|                /     |
++----------------------+
+```

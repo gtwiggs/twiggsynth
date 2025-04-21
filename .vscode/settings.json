@@ -1,6 +1,5 @@
 {
-  "daisyExamplesFolder": "${workspaceFolder}/../DaisyExamples",
-  "workspaceKeybindings.daisyseed.enabled": true,
+  "electrosmithFolder": "/Users/glenntwiggs/Projects/daisy-seed/electro-smith",
   "files.associations": {
     "iostream": "cpp",
     "cmath": "cpp",
@@ -67,5 +66,6 @@
     "thread": "cpp",
     "typeinfo": "cpp",
     "variant": "cpp"
-  }
+  },
+  "cortex-debug.liveWatchRefreshRate": 500
 }

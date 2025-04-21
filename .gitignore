@@ -1,6 +1,8 @@
 ._.DS_Store
 .DS_Store
 
+/hardware/**
+
 /**/build/
 
 # Prerequisites
